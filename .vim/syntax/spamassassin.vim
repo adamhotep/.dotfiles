@@ -2,7 +2,7 @@
 " Language: Spamassassin configuration file
 " Maintainer: Adam Katz <scriptsATkhopiscom>
 " Website: http://khopis.com/scripts
-" Version: 2.6
+" Version: 2.7
 " License: Your choice of Creative Commons Share-alike 2.0 or Apache License 2.0
 " Copyright: (c) 2009-10 by Adam Katz
 
@@ -21,11 +21,18 @@ if exists("b:current_syntax")
   finish
 endif
 
-"""""""""""""
-" Generic bits, largely inherited or tweaked from perl
-
 " Regular expression matching from perl (also pulls @perlInterpSlash)
 syn include @perlInterpMatch	syntax/perl.vim
+
+" attempts at getting it faster
+syntax sync clear
+"set synmaxcol=500
+syntax sync minlines=1 " SA doesn't have multi-line items (except if/endif)
+syntax sync maxlines=2 " SA doesn't have multi-line items (except if/endif)
+
+
+"""""""""""""
+" Generic bits, largely inherited or tweaked from perl
 
 syn match saMatchParent	"\%(\<[m!]\([[:punct:]]\)\|\s\zs\(\/\)\).*\1\2[cgimosx]*\%(\s\|$\)\@=" contains=saMatch,saComment contained
 
@@ -153,7 +160,7 @@ syn match saHeaderMatch "\s[=!]\~\s" contained nextgroup=saBodyMatch
 syn match saHeaderRuleStuff "\<exists:" contained
 syn match saHeaderRuleStuff ":\%(raw\|addr\|name\)\%(\s\)\@=" contained
 syn match saHeaderRuleStuff "\[if-unset:\s*" contained nextgroup=saHRSunsetC
-syn match saHRSunsetC "[^]]*" contained nextgroup=saHRSunsetP2
+syn match saHRSunsetC "[^]]\+" contained nextgroup=saHRSunsetP2
 syn match saHRSunsetP2 "\]" contained
 
 syn keyword saHeaderRuleSpecials ALL ToCc EnvelopeFrom MESSAGEID contained
@@ -165,14 +172,14 @@ syn match saDescribe "\%(^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*describe\s\+\w\+\s\+
 " interrupt saURL color, but don't spellcheck the next part
 syn region saDescribeOverflow1 start=+.+ end="[^-A-Za-z0-9_.:@/#%,;~?+=&]" oneline contained contains=@NoSpell nextgroup=saDescribeOverflow2
 " spellchecking may resume
-syn match saDescribeOverflow2 ".*$" contained contains=@Spell,saComment
+syn match saDescribeOverflow2 ".\+$" contained contains=@Spell,saComment
 
 " body rules have regular expressions w/out a leading =~
 "syn region saBodyMatch matchgroup=saMatchStartEnd start=:\%(^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*\%(raw\)\?body\s\+\w\+\s\+\)\@<=\%(m\)/: end=:\v/[cgimosx]*\%(\s|$)|$: contains=@perlInterpSlash,saMatchParent
 syn region saBodyMatch matchgroup=saMatchStartEnd start=:/: end=:/[cgimosx]*\%(\s\|$\): contains=@perlInterpSlash,saMatchParent oneline contained
-syn match saRegexpRule "\%(^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*\%(\%(raw\)\?body\|full\)\s\+\w\+\s\+\)\@<=.*" contains=saFunction,saComment,saBodyMatch,saMatchParent
+syn match saRegexpRule "\%(^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*\%(rawbody\|body\|full\)\s\+\w\+\s\+\)\@<=\S.\+" contains=saFunction,saComment,saBodyMatch,saMatchParent
 " uri can't contain saFunction
-syn match saRegexpRule "\%(^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*uri\s\+\w\+\s\+\)\@<=.*" contains=saComment,saBodyMatch,saMatchParent
+syn match saRegexpRule "\%(^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*uri\s\+\w\+\s\+\)\@<=\S.\+" contains=saComment,saBodyMatch,saMatchParent
 
 syn match saTestFlags "\%(^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*tflags\s\+\w\+\s\+\)\@<=\S.\+" contains=saTFlags,saComment
 
@@ -206,7 +213,7 @@ syn region saFunctionString start=+'+ end=+'+ skip=+\\'+ contained oneline
 syn region saFunctionString start=+"+ end=+"+ skip=+\\"+ contained oneline
 
 "syn match saMeta "^\%(\%(\s*lang\s+\S\{2,9\}\s+\)\?\s*meta\s\+\w\+\s\+\)\@<=.*" contains=saMetaOp,saParens
-syn match saMeta "\%(\s*meta\s\+\w\+\s\+\)\@<=.\{1,400\}" contains=saMetaOp,saParens,saNumber
+syn match saMeta "\%(\s*meta\s\+\w\+\s\+\)\@<=[^#]\{1,400\}" contains=saMetaOp,saParens,saNumber
 syn match saMetaOp "||\|&&\|[!-+*/><=]\+" contained
 
 """""""""""""

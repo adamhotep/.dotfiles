@@ -2,7 +2,7 @@
 " Language: Spamassassin configuration file
 " Maintainer: Adam Katz <scriptsATkhopiscom>
 " Website: http://khopis.com/scripts
-" Version: 2.7
+" Version: 2.8
 " License: Your choice of Creative Commons Share-alike 2.0 or Apache License 2.0
 " Copyright: (c) 2009-10 by Adam Katz
 
@@ -46,7 +46,7 @@ syn region saMatch	matchgroup=saMatchStartEnd start=+[m!]\[+ end=+\][cgimosx]*\%
 syn region saMatch	matchgroup=saMatchStartEnd start=+[m!]!+ end=+![cgimosx]*\%(\s\|$\)+ contains=@perlInterpSlash,saComment oneline contained
 
 " match // and !?? and m?? for any ? matching punctuation
-syn region saMatch	matchgroup=saMatchStartEnd start=+[m!]\z([[:punct:]]\)+ end=+\z1[cgimosx]*\%(\s\|$\)\ze+ contains=@perlInterpSlash oneline contained
+syn region saMatch	matchgroup=saMatchStartEnd start=+[m!]\z([[:punct:]]\)+ end=+\ze\z1[cgimosx]*\%(\s\|$\)+ contains=@perlInterpSlash oneline contained
 
 syn match saWrongMatchOp	"[~]=" containedin=ALL
 
@@ -57,9 +57,9 @@ syn keyword saTodo	TODO TBD FIXME XXX BUG contained
 syn match   saComment	"#.*$" contains=saTodo,saURL,@Spell
 
 syn match saParens "[()]"
-syn match saNumber "\%(^\|\s\)\@<=-\?\d{1,90}\%(\.\d{1,90}\)\?\>"
-syn match saNumber "\%(^\|\s\|[-+*/.,<=>!~()]\)\@<=-\?\d{1,90}\%(\.\d{1,90}\)\?\%(\s\|[-+*/.,<=>!~()]\|$\)\@=" contained " operators allowed
-syn match saIPaddress "\v\s\zs(\%[012]?\d?\d\.){1,3}\%([012]?\d?\d\%(\/[0123]\d)?)?\ze\%(\s|$)"
+syn match saNumber "\s\zs-\?\d\{1,90\}\>\%(\.\d\{1,90\}\)\?\>"
+syn match saNumber "[-+*/.,<=>!~()[:space:]]\zs-\?\d\{1,90\}\%(\.\d\{1,90\}\)\?\%(\s\|[-+*/.,<=>!~()]\|$\)\@=" contained " operators allowed
+syn match saIPaddress "\s\zs\%([012]\?\d\?\d\.\)\{1,3\}\%([012]\?\d\?\d\%(\/[0123]\?\d\)\?\)\?\ze\%(\s\|$\)"
 syn match saURL "\v\%(f|ht)tps?://[-A-Za-z0-9_.:@/#%,;~?+=&]{4,}" contains=@NoSpell transparent "contained
 "syn match saPath "\v\%(\s|:)/[-A-Za-z0-9_.:@/%,;~+=&]+[^\\]/\%([msixpgc]+\>)\@!" transparent
 " previously also needed this workaround:
@@ -71,7 +71,7 @@ syn match saEmailGlob "\*" contained
 """""""""""""
 " SpamAssassin-specific bits
 
-syn match saRuleLine "^\%(\s\{0,9\}lang\s\{1,9\}\S\{2,9\}\s\)\?\s\{0,9\}\w\{1,50\}" contains=@saRule,saTR,saPreProc
+"syn match saRuleLine "^\%(\s\{0,9\}lang\s\{1,9\}\S\{2,9\}\s\)\?\s\{0,9\}\w\{1,50\}" contains=@saRule,saTR,saPreProc
 
 syn cluster saRule contains=saLists,saHeaderType,saTemplateTags,saNet,saBayes,saMisc,saPrivileged,saType,saDescribe,saReport,saBodyMatch,saAdmin,saAdminBayes,saAdminScores,saPreProc,@saPlugins,saIPaddress,saKeyword
 
@@ -89,9 +89,9 @@ syn keyword saLists whitelist_subject blacklist_subject contained
 syn keyword saHeaderType rewrite_header add_header remove_header contained
 syn keyword saHeaderType clear_headers report_safe contained
 
-syn match saHeader "\%(\<rewrite_header\s\+\)\@<=\S\{1,400\}" contains=saHeaderType nextgroup=saHeaderString
-syn match saHeader "\%(\<add_header\s\+\)\@<=\S\+\s\+\S\+\s\{1,9\}" contains=saHeaderClause nextgroup=saHeaderString
-syn match saHeader "\%(\<remove_header\s\+\)\@<=" nextgroup=saHeaderClause
+syn match saHeader "\<rewrite_header\s\+\zs\S\{1,400\}" contains=saHeaderType nextgroup=saHeaderString
+syn match saHeader "\<add_header\s\+\zs\S\+\s\+\S\+\s\{1,9\}" contains=saHeaderClause nextgroup=saHeaderString
+syn match saHeader "\<remove_header\s\+\zs" nextgroup=saHeaderClause
 syn keyword saHeaderClause spam ham all contained
 syn keyword saHeaderClause Spam Ham All ALL contained
 syn keyword saHeaderType subject from to contained
@@ -118,7 +118,7 @@ syn keyword saSQLTags _TABLE_ _USERNAME_ _MAILBOX_ _DOMAIN_
 
 " more added by the TextCat plugin below, see also saTR for the 'lang' setting
 syn keyword saLang ok_locales normalize_charset contained
-syn match saLocaleLine "\%(^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*ok_locales\s\+\)\@<=\S.\+" contains=saLocaleKeys,saComment
+syn match saLocaleLine "^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*ok_locales\s\+\zs\S.\+" contains=saLocaleKeys,saComment
 syn keyword saLocaleKeys en ja ko ru th zh contained
 
 syn keyword saNet trusted_networks clear_trusted_networks contained
@@ -151,9 +151,9 @@ syn keyword saType priority test tflags uri mimeheader uri_detail contained
 syn keyword saTR lang contained
 syn match saTR "\s\S\{2,9\}\s\{1,9\}" contained contains=saLangKeys
 
-syn match saReport "\%(^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*\%(unsafe_\)\?report\s\+\)\@<=\S.\+" contains=saComment,@Spell
+syn match saReport "^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*\%(unsafe_\)\?report\s\+\zs\S.\+" contains=saComment,@Spell
 
-syn match saHeaderRule "\%(^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*\%(mime\)\?header\s\+\w\+\s\+\)\@<=\S.*" contains=saComment,saHeaderRuleStuff,saHeaderRuleSpecials,saFunction,saMatchParent,saHeaderMatch
+syn match saHeaderRule "^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*\%(mime\)\?header\s\+\w\+\s\+\zs\S.*" contains=saComment,saHeaderRuleStuff,saHeaderRuleSpecials,saFunction,saMatchParent,saHeaderMatch
 
 syn match saHeaderMatch "\s[=!]\~\s" contained nextgroup=saBodyMatch
 
@@ -168,20 +168,20 @@ syn match saHeaderRuleSpecials "\<ALL-\%(\%(UN\)?TRUSTED\|\%(IN\|EX\)TERNAL\)\>"
 syn match saHeaderRuleSpecials "\<X-Spam-Relays-\%(\%(Unt\|T\)rusted\|\%(In\|Ex\)ternal\)\>" contained
 
 " rule descriptions recommended max length is 50
-syn match saDescribe "\%(^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*describe\s\+\w\+\s\+\)\@<=\S.\{1,50}" contains=saComment,saURL,@Spell nextgroup=saDescribeOverflow1
+syn match saDescribe "^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*describe\s\+\w\+\s\+\zs\S.\{1,50\}" contains=saComment,saURL,@Spell nextgroup=saDescribeOverflow1
 " interrupt saURL color, but don't spellcheck the next part
 syn region saDescribeOverflow1 start=+.+ end="[^-A-Za-z0-9_.:@/#%,;~?+=&]" oneline contained contains=@NoSpell nextgroup=saDescribeOverflow2
 " spellchecking may resume
 syn match saDescribeOverflow2 ".\+$" contained contains=@Spell,saComment
 
 " body rules have regular expressions w/out a leading =~
-"syn region saBodyMatch matchgroup=saMatchStartEnd start=:\%(^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*\%(raw\)\?body\s\+\w\+\s\+\)\@<=\%(m\)/: end=:\v/[cgimosx]*\%(\s|$)|$: contains=@perlInterpSlash,saMatchParent
+"syn region saBodyMatch matchgroup=saMatchStartEnd start=:^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*\%(raw\)\?body\s\+\w\+\s\+\zs\%(m\)/: end=:\v/[cgimosx]*\%(\s|$)|$: contains=@perlInterpSlash,saMatchParent
 syn region saBodyMatch matchgroup=saMatchStartEnd start=:/: end=:/[cgimosx]*\%(\s\|$\): contains=@perlInterpSlash,saMatchParent oneline contained
-syn match saRegexpRule "\%(^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*\%(rawbody\|body\|full\)\s\+\w\+\s\+\)\@<=\S.\+" contains=saFunction,saComment,saBodyMatch,saMatchParent
+syn match saRegexpRule "^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*\%(rawbody\|body\|full\)\s\+\w\+\s\+\zs\S.\+" contains=saFunction,saComment,saBodyMatch,saMatchParent
 " uri can't contain saFunction
-syn match saRegexpRule "\%(^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*uri\s\+\w\+\s\+\)\@<=\S.\+" contains=saComment,saBodyMatch,saMatchParent
+syn match saRegexpRule "^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*uri\s\+\w\+\s\+\zs\S.\+" contains=saComment,saBodyMatch,saMatchParent
 
-syn match saTestFlags "\%(^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*tflags\s\+\w\+\s\+\)\@<=\S.\+" contains=saTFlags,saComment
+syn match saTestFlags "^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*tflags\s\+\w\+\s\+\zs\S.\+" contains=saTFlags,saComment
 
 syn keyword saTFlags net nice learn userconf noautolearn multiple contained
 syn keyword saTFlags publish nopublish contained
@@ -212,8 +212,8 @@ syn region saFunctionContent start=+(+ end=+)+ contains=saParens,saNumber,saFunc
 syn region saFunctionString start=+'+ end=+'+ skip=+\\'+ contained oneline
 syn region saFunctionString start=+"+ end=+"+ skip=+\\"+ contained oneline
 
-"syn match saMeta "^\%(\%(\s*lang\s+\S\{2,9\}\s+\)\?\s*meta\s\+\w\+\s\+\)\@<=.*" contains=saMetaOp,saParens
-syn match saMeta "\%(\s*meta\s\+\w\+\s\+\)\@<=[^#]\{1,400\}" contains=saMetaOp,saParens,saNumber
+"syn match saMeta "^\%(\s*lang\s+\S\{2,9\}\s+\)\?\s*meta\s\+\w\+\s\+\zs.*" contains=saMetaOp,saParens
+syn match saMeta "\s*meta\s\+\w\+\s\+\zs[^#]\{1,400\}" contains=saMetaOp,saParens,saNumber
 syn match saMetaOp "||\|&&\|[!-+*/><=]\+" contained
 
 """""""""""""
@@ -252,7 +252,7 @@ syn keyword saDNSBL spamcop_max_report_size uridnsbl_skip_domain contained
 syn keyword saDNSBL uridnsbl_max_domains urirhsbl urirhssub contained
 syn keyword saDNSBLKeys check_uridnsbl
 
-syn match saURIBLtype "\%(\<urirhss[bu][lb]\s\+\w\+\s\+\S\+\s\+\)\@<=\%(A\|TXT\)\>"
+syn match saURIBLtype "\<urirhss[bu][lb]\s\+\w\+\s\+\S\+\s\+\zs\%(A\|TXT\)\>"
 
 syn keyword saAWL use_auto_whitelist auto_whitelist_factor contained
 syn keyword saAWL user_awl_override_username auto_whitelist_path contained
@@ -264,7 +264,7 @@ syn keyword saTemplateTags _AWL_ _AWLMEAN_ _AWLCOUNT_ _AWLPRESCORE_
 
 syn keyword saShortCircuit shortcircuit shortcircuit_spam_score contained
 syn keyword saShortCircuit shortcircuit_ham_score contained
-syn match saShortCircuitLine "\%(^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*shortcircuit\s\+\w\+\s\+\)\@<=\S.\+" contains=saShortCircuitKeys
+syn match saShortCircuitLine "^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*shortcircuit\s\+\w\+\s\+\zs\S.\+" contains=saShortCircuitKeys
 syn keyword saShortCircuitKeys ham spam on off contained
 syn keyword saTemplateTags _SC_ _SCRULE_ _SCTYPE_
 
@@ -275,7 +275,7 @@ syn keyword saAVKeys check_microsoft_executable check_suspect_name
 syn keyword saLang ok_languages inactive_languages contained
 syn keyword saLang textcat_max_languages textcat_optimal_ngrams contained
 syn keyword saLang textcat_max_ngrams textcat_acceptable_score contained
-syn match saLangLine "\%(^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*\%(ok_languages\|inactive_languages\)\s\+\)\@<=\S.\+" contains=saLangKeys,saComment
+syn match saLangLine "^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*\%(ok_languages\|inactive_languages\)\s\+\zs\S.\+" contains=saLangKeys,saComment
 syn keyword saLangKeys af am ar be bg bs ca cs cy da de el en eo es contained
 syn keyword saLangKeys et eu fa fi fr fy ga gd he hi hr hu hy id is contained
 syn keyword saLangKeys it ja ka ko la lt lv mr ms ne nl no pl pt qu contained
@@ -287,10 +287,10 @@ syn match   saLangKeys "\<zh\.\%(big5\|gb2312\)\>" contained
 syn keyword saReplace replace_start replace_end replace_tag contained
 syn keyword saReplace replace_rules replace_tag replace_pre contained
 syn keyword saReplace replace_inter replace_post contained
-syn region saReplaceMatch matchgroup=saMatchStartEnd start=:\%(^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*replace_\%(tag\|pre\|post\|inter\)\s\+\S\+\s\+\)\@<=: end=:$: oneline contains=@perlInterpSlash
+syn region saReplaceMatch matchgroup=saMatchStartEnd start=:^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*replace_\%(tag\|pre\|post\|inter\)\s\+\S\+\s\+\zs: end=:$: oneline contains=@perlInterpSlash
 
 " URIDetail
-syn match saURIDetail "\%(^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*uri_detail\s\+\w\+\s\+\)\@<=\S.\+" contains=saURIDetailKeys,saMatchParent
+syn match saURIDetail "^\%(\s*lang\s\+\S\{2,9\}\s\+\)\?\s*uri_detail\s\+\w\+\s\+\zs\S.\+" contains=saURIDetailKeys,saMatchParent
 syn keyword saURIDetailKeys raw type cleaned text domain contained
 
 " ASN

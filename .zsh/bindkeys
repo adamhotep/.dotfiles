@@ -1,0 +1,75 @@
+# :vim:syn=zsh:
+
+# help can be found at http://zshwiki.org/home/zle/bindkeys
+
+bindkey -e			# emacs keybindings (should be default)
+bindkey ' '	magic-space	# also do history expansion on space
+
+bindkey '^?'	backward-delete-char
+bindkey '^H'	backward-delete-char
+bindkey '\e[3~'	delete-char
+bindkey '^U'	kill-region		# make ^U work like bash, kill left-of
+
+bindkey '\e[7~'	beginning-of-line	# HOME (sometimes \e[1~ instead)
+bindkey '\e[8~'	end-of-line		# END (sometimes \e[4~ instead)
+
+export WORDCHARS=''	# word-terminating characters just like bash
+
+# basic word navigation (like std guis)
+bindkey ';5D'	vi-backward-word		# Ctrl+Left
+bindkey ';5C'	vi-forward-word			# Ctrl+Right
+# these stopped working in in MRXVT with meta8 set (see ~/.mrxvtrc)
+bindkey '\M-b'	vi-backward-word		# Alt+b
+bindkey '\M-f'	vi-forward-word			# Alt+f
+# by whitespace (faster)
+bindkey ';3D'	vi-backward-blank-word		# Alt+Left
+bindkey ';3C'	vi-forward-blank-word		# Alt+Right
+
+# allow globbing when searching the history
+# http://chneukirchen.org/blog/archive/2012/02/10-new-zsh-tricks-you-may-not-know.html
+bindkey '^R' history-incremental-pattern-search-backward
+bindkey '^S' history-incremental-pattern-search-forward
+
+# CTRL+Z at the prompt will foreground the last stopped process
+#_zsh_cli_fg() { fg; }
+#zle -N _zsh_cli_fg
+#bindkey '^Z' _zsh_cli_fg
+
+# ALT+S inserts sudo, from https://stackoverflow.com/a/970202/519360
+# and https://github.com/sorin-ionescu/prezto/issues/28
+_prepend_sudo() {
+  [[ "$BUFFER" != "sudo "* ]] && BUFFER="sudo $BUFFER" && CURSOR+=5
+}
+zle -N _prepend_sudo
+bindkey "^[s" _prepend_sudo
+
+##########
+# Share history, but use local history when pressing Up
+# Use global history when pressing Alt+Up
+# Search global history for matches of given command when pressing Ctrl+Up
+
+# https://superuser.com/questions/446594#691603
+local-up-line-or-history() {
+  zle set-local-history 1
+  zle up-line-or-history
+  zle set-local-history 0
+}
+zle -N local-up-line-or-history
+local-down-line-or-history() {
+  zle set-local-history 1
+  zle down-line-or-history
+  zle set-local-history 0
+}
+zle -N local-down-line-or-history
+
+# up and down use local history buffer
+bindkey "${terminfo[kcuu1]}"	local-up-line-or-history	# Up
+bindkey "${terminfo[kcud1]}"	local-down-line-or-history	# Down
+# with ctrl, use global history buffer (requires SHARE_HISTORY)
+bindkey ';5A'	up-line-or-history		# Ctrl+Up (may need "^[[1;5A")
+bindkey ';5B'	down-line-or-history		# Ctrl+Down
+# search global history based on the command we are sitting on
+bindkey ';3A'	history-search-backward 	# Alt+Up
+bindkey ';3B'	history-search-forward		# Alt+Down
+
+##########

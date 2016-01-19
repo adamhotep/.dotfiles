@@ -1,0 +1,89 @@
+# vim:syn=zsh
+
+#export DEBUGME=true
+if [ -n "$DEBUGME" ]; then
+  sec1=$(date +%s)
+  if [ "$(( ${sec0:-0} + 500 ))" -gt sec1 ]
+    then sec0=$(date +%s)
+    else sec0=$sec1
+  fi
+  unset sec1
+  if [ "$DATE_N" != "true" ]; then
+    if [ "$(date +%N 2>&1)" -ge 0 ] 2>/dev/null; then
+      DATE_N=true
+      msecs() {
+        local n=$(date +%N)  # current nanoseconds
+        printf "%01d%03d" $(($(date +%s)-sec0)) ${n%??????} # ns truncated to ms
+      }
+      START=$(msecs)
+    fi
+  else
+    msecs() { date +%s; }
+    START=$sec0
+  fi
+  debugme() {
+    local tmp t=$(($(msecs)-START))
+    if [ -n "$DATE_N" ]; then
+      t=`printf %04d $t`
+      tmp=${t%???}
+      t=${tmp:-0}.${t#$tmp}
+    fi
+    echo "$t: $*"
+  }
+  debugme ".zsh/adam startup: sec0=$sec0 START=$START msecs=$(msecs)"
+else
+  debugme() { true; }
+fi
+
+[ -z "$SHELL" ] && export SHELL=`which zsh 2>&1 || echo /bin/zsh`
+
+### zsh settings ##########
+# moved to ~/.zsh/zshcmds due to older zsh versions incompatibility
+### end zsh settings ######
+
+# emulate bash's [[ text =~ /regexp/ ]]
+function regexp() { [[ $# == 2 ]] && echo "$1" |egrep -- "$2" >/dev/null; }
+
+REAL_NAME=adam
+[ -z "$HOST" ] && HOST=`uname -n`
+REAL_HOST=$HOST
+[ "$HOST" = localhost ] && [ "$HOST" != "$(hostname)" ] && HOST="$(hostname)"
+[ -z "$OS" ] && OS=`uname -s`
+[ "$OS" != "${OS#*IRIX64}" ] && OS="${OS%64}"
+export OS
+
+# make sure it is easy to see if in cygwin (posix emulation for MS Windows)
+[ -n "`echo $OS|grep -i cygwin`" ] && [ -z "$CYGWIN" ] && export CYGWIN="tty"
+
+# RESUME SCREEN if we can, using custom script or else screen -r
+if [ -x "$ZDOTDIR/resume-screen" ]; then
+  RESUME_HOSTS='denali cerberus alumni' "$ZDOTDIR/resume-screen"
+else
+  # give time to CTRL+C after disconnecting
+  screen -r >/dev/null 2>&1 && sleep 1
+fi
+
+case $HOST$OS in
+  *SunOS | *AIX ) TERM=dtterm ;;
+esac
+
+(regexp "$OS" "inux|BSD") && [ -n "$SSH_TTY" ] && [ "$TERM" = "dtterm" ]\
+                          && TERM=xterm-color
+
+# BASE SETTINGS
+cd
+for file in .zsh/prompt .zsh/bindkeys .zsh/zshcmds .pathfix .aliases; do
+  if [ -r "$file" ] 
+    then debugme "parsing $file"; source "$file"
+    else [ -r "$file.bak" ] && source "$file.bak" # try a backup version
+  fi
+done
+unset file do_screen
+cd - >/dev/null
+
+# log which screen to use on this system
+if [ "$(which -a screen |grep -c '^/')" -gt 1 ]; then
+  which -a screen |grep -m1 ^/ >~/.screen.`uname -n`
+fi
+
+debugme .zsh/adam is done.

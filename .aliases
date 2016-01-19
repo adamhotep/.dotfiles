@@ -1,0 +1,1784 @@
+# ~/.aliases
+#
+# This is a LARGE collection of aliases written by Adam Katz over a lifetime.
+# It should work on bash and zsh, old and new.  Old and Cygwin no longer vetted.
+
+cat <<} >/dev/null # { License and copyright information
+
+.aliases is Copyright (c) 2000+ by Adam Katz.  All rights reserved.
+
+Copying and distribution of this file, with or without modification, are
+permitted in any medium without royalty provided the copyright notice and
+this notice are preserved. This file is offered as-is, without any warranty.
+Beerware: I encourage fans to sit down with me, buy me a beer, and be social.
+
+}
+
+if [ -n "$DEBUGME" ]; then
+  sec1=$(date +%s)
+  if [ "$(( ${sec0:-0} + 500 ))" -gt "$sec1" ]
+    then sec0=$(date +%s)
+    else sec0=$sec1
+  fi
+  unset sec1
+  if [ "$DATE_N" != "true" ]; then
+    if [ "$(date +%N 2>/dev/null)" -gt 0 ] 2>/dev/null; then
+      DATE_N=true
+      msecs() {
+        local n=$(date +%N)  # current nanoseconds
+        local d=$(($(date +%s)-sec0))
+        printf "%01d%03d" ${d#0} ${n%??????} # ns truncated to ms
+      }
+      START=$(msecs)
+    fi
+  else
+    msecs() { date +%s; }
+    START=$sec0
+  fi
+  debugme() {
+    local TMP t=$(($(msecs)-START))
+    if [ -n "$DATE_N" ]; then
+      t=`printf %04d $t`
+      TMP=${t%???}
+      t=${TMP:-0}.${t#$TMP}
+    fi
+    echo "$t: $*"
+  }
+  debugme ".aliases startup: sec0=$sec0 START=$START msecs=$(msecs)"
+else
+  debugme() { true; }
+fi
+
+# strip path off given string and report real path or else report given string
+absolute() { command -v "${1##*/}" 2>/dev/null || echo "$1"; }
+
+# decode given alias
+# Usage: dealias ALIAS [SED_COMMAND]
+dealias() {
+  local transform=
+  if alias "$1" >/dev/null 2>&1; then
+    transform="s/^[^']*'//;s/'[^']*$//${2:+;$2}"
+  fi
+  command -v "$1" |sed "$transform"
+  [ -n "$transform" ] # return value indicates whether or not there was an alias
+}
+
+unfun() {
+  unalias "$@" 2>/dev/null
+  unfunction "$@" 2>/dev/null
+  unset -f "$@" 2>/dev/null
+  unset "$@" 2>/dev/null
+  true
+}
+
+# we_have PROGRAM [PROGRAM...] -> true if we have ALL of the listed programs
+if type type >/dev/null 2>&1 # uh, this is part of the bourne/korn standard
+  then we_have() { type "$@" >/dev/null 2>&1; }
+  else we_have() { which_a -1 "$@" >/dev/null 2>/dev/null; }
+fi
+# we_have_any PROGRAM [PROGRAM...] -> true if we have ANY of the listed programs
+#we_have_any() { for x in "$@"; do we_have "$x" && return 0; done; return 1; }
+we_have_any() { type "$@" 2>&1 |grep -vqw "not found"; }
+if ! we_have where; then alias where=type; fi # bash lacks zsh's where
+
+# NOTE to self, I think this would work in zsh (but not bash):
+#we_have() { for c in "$@"; do [[ -x ="$c" ]] || return $?; done; return 0; }
+# further note:  /usr/bin/\[ -x ="$c" ]  appears to work but may be unreliable
+
+we_have compdef || compdef() { true; }
+
+# a more portable mktemp
+mktemp() {
+  local action=touch tmpdir="${TMPDIR:-/tmp}" TMP="$tmpdir"
+  command mktemp ${1+"$@"} 2>/dev/null && return
+  command mktemp ${1+"$@"} $tmpdir/tmp.XXXXXXXXXX 2>/dev/null && return
+  [ "$1" = "-d" ] && action=mkdir
+  [ ! -w "$tmpdir" ] && echo "mktemp: '$tmpdir' locked" >&2 && return 2
+  while [ -e "$TMP" ] || ! $action "$TMP" 2>/dev/null; do
+    TMP="$tmpdir/tmp.$(od -cAn /dev/urandom|tr -cd '[:alpha:]' |head -c8)"
+  done
+  chmod go-rwx "$TMP"
+  echo "$TMP"
+}
+
+
+debugme "start shellcheck"
+# as I posted to https://unix.stackexchange.com/a/179299/87770
+unset MYSHELL
+if [ -n "$ZSH_VERSION" ] && command -v zstyle >/dev/null 2>&1; then	# zsh
+  MYSHELL=`absolute /bin/zsh`
+elif [ -x "$BASH" ] && command -v caller >/dev/null 2>&1; then		# bash
+  MYSHELL=`absolute "$BASH"`
+elif [ -x "$shell" ] && which setenv |grep builtin >/dev/null; then	# tcsh
+  echo "DANGER: this script is not written for C shells!"
+  sleep 5
+  setenv MYSHELL "$shell"
+fi
+debugme "shellcheck step 2: verify"
+if [ ! -x "$MYSHELL" ]; then # check the hard way
+  MYSHELL=`absolute "$(ps $$ |awk 'NR == 2 { print $NF }')"`
+  [ -x "$MYSHELL" ] || MYSHELL="${SHELL:-/bin/sh}"  # default if verify fails
+fi
+export MYSHELL
+
+debugme "shellcheck step 3"
+
+# Version as an int; 4.3.39(1)-release -> 14003039001, 0.10.6 -> 10010006000
+#   This has a leading "1" to prevent interpreting a leading zero as octal
+# If in zsh but without SH_WORD_SPLIT, we need a subshell with echo
+if we_have setopt && TMP=`setopt` && [ "$TMP" = "${TMP%shwordsplit*}" ]; then
+  versint() { printf "1%d%03d%03d%03d" `echo ${1//[^0-9]/ }`; }
+else
+  versint() { printf "1%d%03d%03d%03d" ${1//[^0-9]/ }; }
+  #printf "1%d%03d%03d%03d" `echo "$1" |grep -o '[0-9]*'`
+fi
+compare_vers() {
+  [ $(versint "$1") "$2" $(versint "$3") ] 2>/dev/null
+}
+
+if [ "$MYSHELL" != "${MYSHELL%zsh}" ]; then
+
+  # Usage: prof COMMAND [COMMAND_ARGUMENTS...]
+  # See also zprof, which I still don't understand.
+  # Profiling methodology from https://stackoverflow.com/a/4351664/519360
+  prof() {
+    local YN PROF_LOG START PS4
+
+    # setup
+    PROF_LOG=$(mktemp)
+    START=$(date +%s.%N)
+    PS4='$(printf %.6f $(($(date +%s.%N)-START))) %N:%i> '
+    exec 3>&2 2>$PROF_LOG
+    setopt xtrace prompt_subst
+
+    # execution
+    "$@"
+
+    # wrapup
+    unsetopt xtrace
+    exec 2>&3 3>&-
+
+    # analysis
+    if [ ! -s "$PROF_LOG" ]; then
+      echo "Error profiling, no data collected" >&2
+      rm -f "$PROF_LOG"
+      unset PROF_LOG
+      return 127
+    fi
+    echo "Searching for commands that took more than 0.05 seconds to run..."
+    awk '
+      NR == 1 { last = $1 }
+      { off = "" }
+      /\033\[/ { off = "\033[0;0m" }	# stop colors at end of lines w/ colors
+      $0 !~ /^[0-9]+\.[0-9]+ / {
+        if(encore)
+          print $0 off;
+        next
+      }
+      { encore = 0 }
+      $1 - last > 0.05 {
+        print "----\n\033[0;31m" $0 "\033[0;0m";
+        encore=1;
+        last=$1;
+        next
+      }
+      {
+        print $0 off;
+        last=$1
+      }' "$PROF_LOG" | less -g "+/^----$"
+    printf "Remove profiling log '$PROF_LOG' [Yn]? "
+    read YN
+    if [ "$YN" = "${YN#[Nn]}" ]; then
+      rm -f "$PROF_LOG"
+    fi
+    unset PROF_LOG
+  }
+
+  if compare_vers "$ZSH_VERSION" -ge 4.2.0; then
+    # -g = global alias, works anywhere in command. there's also -s = suffix
+    alias -g ...='../..' # doesn't work so well b/c it needs spaces
+  fi
+fi
+
+debugme "check bash version >=3.2.49 (no dashes in function names)"
+if [ -n "$BASH_VERSION" ]; then
+  if compare_vers "$BASH_VERSION" -ge 3.2.0; then
+    BASH_NO_DASH_FUNC=true
+  fi
+  # If we launch a new shell, I want it to be the updated one
+  if [ "$SHELL" != "${SHELL%bash}" ] && [ "$SHELL" != `command -v bash` ]\
+  && "`command -v bash`" --version >/dev/null 2>&1; then
+    SHELL=`command -v bash`
+  fi
+fi
+
+debugme "see if /bin/sh is bash"
+#if /bin/ls -lL /bin/bash /bin/sh 2>&1 |awk '{s[NR]=$5} END {exit s[1]==s[2]}'
+if /bin/sh --help 2>&1 |grep bash >/dev/null
+  then SH_IS_BASH=true
+  else alias sh='PS1="$ " sh'
+fi
+
+debugme "set which and exe verifiers"
+
+# learn more than you ever wanted to know about which vs type vs command -v etc:
+# https://unix.stackexchange.com/questions/85249/why-not-use-which-what-to-use-then/85250#85250
+
+# backup "which" that works like GNU which with the -a flag (this is slow)
+which_a() {
+  local RETVAL NOALIAS='' ONCE='' IFS arg dir IS_EXEC 2>/dev/null
+  for arg in "$@"; do
+    [ "$arg" = "-a" ] && continue
+    [ "$arg" = "-1" ] && ONCE=true && continue
+    [ "$arg" = "-A" ] && NOALIAS=true && continue
+    [ -z "$NOALIAS" ] && alias "$arg" 2>/dev/null && RETVAL=0 \
+      && [ -n "$ONCE" ] && continue
+    IFS=":"
+    for dir in $PATH; do # note, zsh needs the "nowordsplit" option set for this
+      [ -f "$dir/$arg" ] && [ -x "$dir/$arg" ] && \
+        echo "$dir/$arg" && IS_EXEC=true && [ -n "$ONCE" ] && break
+    done
+    [ -z "$IS_EXEC" ] && RETVAL=1 # one failure means the whole thing is false
+    unset IS_EXEC
+  done
+  return $RETVAL
+}
+[ -z "$BASH_NO_DASH_FUNC" ] && which-a() { which_a ${1:+"$@"}; }
+
+
+s='[ 	]'	# [ sp ht ]
+q="'"		# '  apostrophe (single-quote)
+qq='"'		# "  double-quote
+qqq="$q$qq"	# '" apostrophe followed by double-quote
+
+
+debugme "colors and file manipulation tools"
+
+if we_have col-color; then
+
+  # pipestatus fu comes from https://unix.stackexchange.com/a/14276/87770
+  _col_colorize() {
+    local ccz1 ccz2 retval_bash retval_zsh
+    ccz1="${1#--ccz=}"
+    ccz2="${2#--ccz=}"
+    if [ -n "$ccz1" ] && [ "$ccz1" != "$1" ]; then shift; else unset ccz1; fi
+    if [ -n "$ccz2" ] && [ "$ccz2" != "$1" ]; then shift; else unset ccz2; fi
+    command "$@" |col-color $ccz1 $ccz2
+    retval_bash="${PIPESTATUS[0]}" retval_zsh="${pipestatus[1]}"
+    return $retval_bash $retval_zsh
+  }
+
+  we_have w _col_colorize && alias w="_col_colorize --ccz=1.1 --ccz=7 w"
+  we_have who _col_colorize && alias who="_col_colorize who"
+
+fi
+
+# colors via GRC
+# see also http://crunchbanglinux.org/forums/post/83643/#p83643
+# see also https://unix.stackexchange.com/a/178816/87770
+if we_have grc; then
+
+  # using this as a variable allows easier calling down lower
+  export GRC='grc -es --colour=auto'
+
+  # parse commands out of grc.conf file(s) or else fail over to locate
+  cmd="$( perl -ne '
+    s/\\b//g;
+    if (m{.*/\)(?!\?)([\w?-]*)(?:\\s\??|\Q(?!\S)\E)?$}) {
+      s//$1/;
+      my $o = $_;
+      $o =~ s/.\?//g;
+      print $o;
+      s/\?//g;
+      print if $_ ne $o
+    }' {,/usr/local}/etc/grc.conf "$HOME/.grc/grc.conf" 2>/dev/null \
+      |grep . || locate grc/conf. |sed 's/.*grc.conf.//' )"
+  for cmd in $cmd g++ head ld tail; do
+    we_have "$cmd" || continue
+    case $cmd in
+      (ps)	we_have grcat && GRC_PS="grcat conf.$cmd" && continue ;;
+      (ping*)	compdef _hosts "$cmd" ;;
+    esac
+    alias "$cmd"="$GRC $cmd"
+  done
+  unset cmd
+  if [ -n "$GRC_PS" ]; then
+    alias ps='psl --cmd'
+  fi
+
+  alias configure="[ -x ./configure ] && $GRC ./configure" # test existence
+
+elif we_have col-color; then
+  alias traceroute="_col_colorize --ccz=1 --ccz=99 traceroute"
+  alias traceroute6="_col_colorize --ccz=1 --ccz=99 traceroute6"
+fi
+
+# As I posted to https://unix.stackexchange.com/a/178816/87770
+function _colorman() {
+  env \
+    LESS_TERMCAP_mb=$(printf "\e[1;35m") \
+    LESS_TERMCAP_md=$(printf "\e[1;34m") \
+    LESS_TERMCAP_me=$(printf "\e[0m") \
+    LESS_TERMCAP_se=$(printf "\e[0m") \
+    LESS_TERMCAP_so=$(printf "\e[7;40m") \
+    LESS_TERMCAP_ue=$(printf "\e[0m") \
+    LESS_TERMCAP_us=$(printf "\e[1;33m") \
+      "$@"
+}
+function man() { _colorman man "$@"; }
+function perldoc() { _colorman perldoc "$@"; }
+
+unfun help bhelp zhelp
+if [ "$MYSHELL" != "${MYSHELL%/bash}" ]; then
+  alias bhelp=help
+elif we_have bash; then
+  bhelp() { bash -c "help $@"; }
+fi
+if [ "$MYSHELL" != "${MYSHELL%/zsh}" ]; then
+  alias zhelp="run-help"
+  alias help="run-help"
+elif we_have zsh; then
+  zhelp() { zsh -c "run-help $@"; }
+fi
+
+# http://chneukirchen.org/blog/archive/2012/02/10-new-zsh-tricks-you-may-not-know.html
+function zman() { PAGER='less -g -s "+/^       '"$*"'\>"' man zshall; }
+
+# grep
+unset GREP_OPTIONS GREP_COLOR
+if echo hello|grep --color=auto l >/dev/null 2>&1; then
+  GREP_OPTS="--color=auto"
+  GREP_COLOR="1;32"
+  export GREP_COLORS="ms=$GREP_COLOR"
+
+  #if GREP_OPTIONS='-A1 -G' grep -V 2>&1 |grep -q GREP_OPTIONS.is.deprecat; then
+  #  stuff
+  #else
+  #  GREP_OPTIONS='--color=auto'
+  #  GREP_COLOR='1;32'
+  #fi
+
+  if echo hello |grep --exclude-dir=.svn l >/dev/null 2>&1; then
+    for exclude in .cvs .hg .svn .git .DS_Store CVS; do
+      GREP_OPTS="$GREP_OPTS --exclude-dir=$exclude"
+    done
+    unset exclude
+  fi
+
+  if [ -n "$ZSH_VERSION" ]; then
+    alias   grep='grep ${=GREP_OPTS}'
+    alias egrep='egrep ${=GREP_OPTS}'
+    alias fgrep='fgrep ${=GREP_OPTS}'
+  else
+    alias   grep='grep $GREP_OPTS'
+    alias egrep='egrep $GREP_OPTS'
+    alias fgrep='fgrep $GREP_OPTS'
+  fi
+
+fi
+
+if echo hello |pcregrep --color=auto l >/dev/null 2>&1; then
+  export PCREGREP_COLOR="${GREP_COLOR:-1;32}"
+  PCREGREP_OPTIONS="${GREP_OPTS##*--colo[ur]}"
+  if [ "$PCREGREP_OPTIONS" != "$GREP_OPTS" ]; then
+    PCREGREP_OPTIONS="--color${PCREGREP_OPTIONS## *}"
+  else
+    PCREGREP_OPTIONS="--color=auto"
+  fi
+  alias pcregrep='pcregrep $PCREGREP_OPTIONS'
+fi
+
+# Usage: grepe [OPTIONS] PATTERN [PATTERN...] [FILE...]
+#   OPTIONS and PATTERN follow same rules as grep
+#   If you want a PATTERN that happens to also be a file,
+#   try e.g.    grepe foo bar -e also_a_file real_file
+# TODO: consider zsh's ability to do:  grep -e"${^@}"
+grepe() {
+  local z e query last args
+  args=''
+  z=''
+  i=0
+  while [ "$1" != "${1#-}" ]; do
+    args="$args $1"
+    shift
+  done
+  for query in ${1+"$@"}; do
+    [ -z "$z" ] && z=1 && set --
+    if [ "$query" = -e ] || [ -r "$query" ] || [ "$last" = -e ]
+      then e=""
+      else e="-e"
+    fi
+    set -- ${1+"$@"} $e "$query"
+    last="$query"
+  done
+  grep $args ${1+"$@"}
+}
+
+alias words='grep -wo "\w\w*"'
+
+if echo foo:bar baz |egrep -qo "\S+" 2>/dev/null; then
+  alias swords='egrep -o "\S+"'
+elif echo foo:bar baz |pcregrep -qo '\S\S*' 2>/dev/null; then
+  alias swords='pcrgrep -o "\S+"'
+elif we_have awk; then
+  alias swords='awk "{gsub(FS,"\n")} $1"'
+elif we_have perl; then
+  alias swords='perl -pne "s/\s+/\n/g"'
+fi
+
+GREP_P=`echo true |grep -Poi '(?<!un)t(?:r)ue(?!r)' 2>/dev/null`
+
+grepP() {
+  local arg start end i x v m n o q a l c label
+  if [ -n "$GREP_P" ]; then
+    grep -P ${1+"$@"}
+  elif we_have pcregrep; then
+    pcregrep ${1+"$@"}
+  elif we_have perl; then
+    if=if
+    while getopts iwxvm:nHhoqalc-: arg; do
+      case $arg in
+        i ) i=i ;;
+        w ) start='\b'; end='\b' ;;
+        x ) start='^';  end='$' ;;
+        v ) if=unless ;;
+        m ) m=$OPTARG ;;
+        n ) n=n ;;
+        h ) label=-h ;;
+        H ) label=-H ;;
+        o ) o=g ;;
+        q ) q=q ;;
+        a ) a=a ;;
+        l ) l=l; label=-H ;;
+        c ) c=c ;;
+        - ) OA="${OPTARG#*=}"
+            case $OPTARG in
+              ignore-case )	i=i ;;
+              word* )		start='\b'; end='\b' ;;
+              line*reg* )	start='^';  end='$' ;;
+              invert* ) 	if=unless ;;
+              max* ) 		m="$OA" ;;
+              line|line*num* )	n=n ;;
+              no*file* ) 	label=-h ;;
+              with*file* ) 	label=-H ;;
+              label )		label="--label=$OA" ;;
+              only* )		o=g ;;
+              quiet|silent* )	q=q ;;
+              text )		a=a ;;
+              files*match* )	l=l; label=-H ;;
+              count* )		c=c ;;
+              * )		echo "Illegal option --$OPTARG"; return 2 ;;
+            esac ;;
+        \?) return 2 ;;
+      esac
+    done
+    shift $((OPTIND-1))
+    query="$1"
+    shift
+    #TODO: support --color, $GREP_OPTIONS, $GREP_COLOR
+    do_color='--color=always'
+    if echo foo |grep $do_color oo 2>/dev/null \
+      |perl -ne "/$divider/ ? exit 0 : exit 1"; then
+      divider='\e\[\d{0,2}m\e\[K'
+      line_parser="^$divider(.*?)$divider:$divider"
+    else
+      do_color=''
+      line_parser="^([^:]+):"
+    fi
+    grep $do_color $label -H$a ^ ${1+"$@"} |perl -e "
+      my \$match = 0;
+      while(<>) {
+        chomp;
+	my (\$label) = /$line_parser/;
+	\$label = '' if qq($label) ~= /-h/;
+	s///;
+        $if( m{$start$query$end}$i ) {
+	  if (qq($q) == 'q') {
+            exit 0;
+	  }
+	  \$match++;
+	  print qq(${n:+\$.:}$_\n);
+        } elsif (qq($q$v) == 'qv') { # matched regex
+          exit 1;
+        }
+	last if \$match >= $m;
+      }
+    "
+  elif we_have egrep; then
+    egrep ${1+"$@"}
+  elif echo true |grep -Eo 'tN?ru+e\b' >/dev/null 2>&1; then
+    grep -E ${1+"$@"}
+  else
+    grep ${1+"$@"}
+  fi
+}
+
+# Usage: __awk_helper [AWK_OPTIONS] AWK_CODE [COLUMN] [DELIMITER [--]] [FILE...]
+# To specify a DELIMITER that is also a file name, add -- after it.
+__awk_helper() {
+  local arg ARGV code delim OA
+  we_have typeset && typeset -A ARGV # tell zsh this is an associative array
+  ARGV[COL]=-vCOL=0
+  while getopts v: arg; do
+    case "$arg" in ( v ) ARGV[${OPTARG%%=*}]="-v$OPTARG" ;; esac # hash!
+  done
+  shift $((OPTIND-1))
+  code="$1"
+  shift
+  if [ "$1" = z ] || [ "$1" = NF ]; then
+    ARGV[COL]=-vCOL=NF; shift # NOTE: NF is magical & won't work in another var
+    # workaround for NF: substitute COL for NF
+    if we_have perl
+      then code=`echo "$code" |perl -pne 's/\bCOL\b/NF/g'`
+      else code="${code//COL/NF}"
+    fi
+  # zsh considers whitespace, dash, and empty strings to be zero
+  # so I add a leading one.  I'm not worried about hitting INT_MAX here.
+  elif [ "1$1" -ge 10 ] 2>/dev/null; then
+    ARGV[COL]=-vCOL="$1"; shift
+  fi
+  if [ "$2" = -- ] || [ -n "$1" -a ! -f "$1" ]; then ARGV[F]=-F"$1"; shift; fi
+  awk "${ARGV[@]}" ${code+"$code"} ${1+"$@"}
+}
+
+# unsorted uniq, from ex 8 of https://codegolf.stackexchange.com/a/45023/43035
+# Usage: uniqc [COLUMN [DELIMITER]] [FILE...]
+alias uniqc='__awk_helper "!seen[\$COL]++"'
+
+# Usage: field NUM [FILE] [DELIMITER [EOL]]
+# Usage: c3 [DELIMITER] [EOL]
+# Default delimeter [[:space:]], end-of-line \n, field number 1, file STDIN.
+#field() { cut -d "${2:- }" -f "${1:-1}"; }  # cut puts b 3rd in "a  b" (nuts)
+#field() { awk ${2:+-F "$2"} "\$${1:-1} {printf \$${1:-1}"'"'"${3:-\n}"'"'"}"; }
+alias field='__awk_helper "NF >= COL { print \$COL }"'
+# a more basic definition would be e.g.    alias c1="awk 'NF >= 1 {print \$1}'"
+# Charlie Slater's version was             alias c1='cut -d " " -f 1'
+for f in {1..20} z; do
+  alias c$f="field $f"
+  #alias uniqc$f="uniqc $f"
+done
+unset f
+# sort a list by the occurrence of unique lines (folded cases get capitalized)
+
+alias CNT='sort |uniq -c |sort -n'	# case sensitive; this is Charlie's cnt
+#alias cnt='sort -if | uniq -ic | sort -ifn'
+unfun cnt
+cnt() {
+  local DESC USAGE arg CASE=0 REV=
+  DESC="Rank inputs by frequency of given column (or else whole lines)"
+  USAGE="Usage: cnt [-hir] [COLUMN [DELIMITER [--]]] [FILE...]"
+  while getopts hiIr arg; do
+    case "$arg" in
+      ( i )	CASE=0 ;;				# no case
+      ( I )	CASE=1 ;;				# case sensitive
+      ( h )	echo "$DESC\n$USAGE"; return 0 ;;	# help
+      ( r )	REV=-r ;;				# reverse order
+      ( \? )	echo "cnt: Invalid argument '$arg'\n$USAGE" >&2; return 1 ;;
+    esac
+  done
+  shift $((OPTIND-1))
+  __awk_helper -v CASE=$CASE '
+    NF >= COL {
+      if (!CASE) $COL = tolower($COL)
+      if (++seen[$COL] > max) max=seen[$COL]	# Count. If needed, update max.
+    }
+    END { for (c in seen) printf "%*s  %s\n", length(max), seen[c], c }
+  ' ${1+"$@"} |sort -n $REV
+}
+
+# Usage: getline [LINE...|RANGE...|REGEX...] [FILE...]
+# Get matching lines.
+function getline() {
+  local arg= end
+  while [ -n "$1" ] && [ ! -r "$1" ]; do
+    arg="$arg${1//-/,}p;"
+    shift
+  done
+  case "$arg" in	# can we quit upon finding something?
+    ( *\;?* | */* ) true ;; # no-op (skip these)
+    ( *,?* )	end="${arg##*,}"; arg="$arg${end%p;}q" ;;
+    ( * )	arg="$arg${arg%p;}q" ;;
+  esac
+  sed -n "$arg" ${1+"$@"}
+}
+
+# true when the first STRING is equivalent to any other given STRING
+# Usage: eq STRING [STRING...]
+# NOTE: this uses perl's notation,  eq  for strings and  ==  for integers.
+#       POSIX  test  is reversed:  -eq  for integers and  =  for strings.
+eq() {
+  local a="$1" b
+  shift
+  for b in ${1+"$@"}; do
+    [[ "$a" == "$b" ]] && return $?
+  done
+  return 1
+}
+
+if ! we_have randln rnd && eq "$(command -v random)" "" /usr/games/random \
+&& we_have perl; then
+  # N-line solution by Henry Stern <henry@stern.ca>
+  rnd() { perl -e '
+    use strict;
+
+    my @lines;
+    my $n = (@ARGV && $ARGV[0] =~ /^\d+$/) ? shift @ARGV : 1;
+
+    rand($.) < $n && ($lines[@lines < $n ? @lines : rand($n)] = $_) while (<>);
+    print @lines;
+  ' ${1+"$@"}; }
+fi
+
+# fix lack of "disown" function
+#(sleep 4 & disown) 2>/dev/null || disown() { true; }
+
+
+TTY=`tty`
+GPG_TTY="$TTY"
+TTY="${TTY#/dev/}"
+[ -z "$OS" ] && OS=`uname -s`
+[ -z "${OS#IRIX64}" ] && OS=IRIX
+[ "$OS" != "${OS#*CYGWIN}" -a -z "$CYGWIN" ] && CYGWIN="ntsec" # was "ntsec tty"
+[ "$OS" != "${OS##*[Bb][Ss][Dd]}" ] && BSD="$OS"
+
+export TTY GPG_TTY OS
+
+debugme "process listing - ps, psl"
+
+unfun ps
+if [ -n "$CYGWIN" ]; then
+  alias psax='command ps -Wef'
+elif [ "$OS" = SunOS -a -x /usr/ucb/ps ]; then
+  alias ps="$GRC /usr/ucb/ps"
+  alias psax='/usr/ucb/ps auxww'
+elif ps auxww 2>&1 |grep -wq root; then
+  alias psax='command ps auxww'
+else
+  alias psax='command ps -ef'
+fi
+
+debugme "psax done..."
+
+if ! we_have pstree && ps --help all 2>&1 |grep .--forest >/dev/null; then
+  alias pstree='ps --forest'
+fi
+
+#alias psl='psax|GREP_COLORS="ms=7;40" grep "^USER.*$" && psax|grep -i'
+#
+# zsh can do:  grep -i "${@:^}" =(psax)  but bash complains, even w/ if false
+
+# As posted to https://unix.stackexchange.com/a/178427/87770
+# (plus support for coloring via GRC)
+psl() {
+  local PS_OUTPUT
+  if [ "$1" = "--cmd" ]; then
+    shift
+    PS_OUTPUT="$(command ps ${1+"$@"} )"
+  else
+    PS_OUTPUT="$(psax)"
+  fi
+  if [ -t 1 ] && [ -n "$GRC_PS" ]; then
+    PS_OUTPUT=`echo "$PS_OUTPUT" |$GRC_PS`
+  fi
+  if [ "$1" = --notitle ]
+    then shift
+    else echo "${PS_OUTPUT%%$'\n'*}" >&2	# just the title, to stderr
+  fi
+  echo "${PS_OUTPUT#*$'\n'}" |GREP_COLORS='ms=7;32' grep -i "${@:-^}"
+}
+
+debugme "psl done..."
+
+# my old solution
+#psl() { 
+#  local grep=grep pcre='' args=''
+#  if [ "$1" != "${1#-*P}" ]
+#    then pcre="?<="
+#    elif we_have egrep; then grep=egrep
+#  fi
+#  psax 2>/dev/null |sed 1q \
+#    |GREP_COLORS="ms=7;40" GREP_OPTIONS='--color=auto' $grep . >&2 #BOLD
+#  [ $# = 0 ] && psax |sed '2,$!d' && return
+#  while [ "${1#-}" != "$1" ]; do  # skip over arguments to grep
+#    args="$args $1"
+#    shift
+#  done
+#  #start="${*%[!]?*+.)$]}"
+#  #end="${*#$start}"
+#  #psax |$grep -i $args "$start${end:+[$end]}"
+#  psax |$grep -i $args "($pcre^|[^)])$@"
+#}
+
+pslwatch() {
+  local n=1 r=$LINES notitle PS_OUTPUT
+  while true; do
+    if [ $((r=r+n)) -ge $((LINES/2-1)) ]
+      then notitle= r=-1 n=1
+      else notitle=--notitle
+    fi
+    PS_OUTPUT=$(psl $notitle "${@:-^}")
+    echo "$PS_OUTPUT" |trunc |${GRC_PS:-cat}
+    sleep 1.25
+    n=$(echo "$PS_OUTPUT" |grep -c ^)
+    [ $n -gt 1 ] && echo && n=$((n+1)) # line break if multiple matches
+  done
+}
+
+# Usage: waitx [-TIME] PID [PID...]
+# Wait in TIME second increments (default=30) for all given PIDs to complete
+waitx() { # external wait
+  local TIME
+  # yes, this limits us from using decimals, but we should keep it > 1s anyway
+  if [ "$1" != "${1#-}" ] && [ "${1#-}" -ge 1 ] 2>/dev/null && [ -n "$2" ]
+    then TIME="${1#-}"; shift
+    else TIME=30
+  fi
+  while ps "$@" >/dev/null; do sleep $TIME; done
+}
+
+killproc() {
+  local sudo=''
+  [ "$1" = sudo ] && sudo=sudo && shift
+  if [ "$1" != "${1#-}" ]; then
+    echo "Usage: killproc [sudo] [kill-options]"
+    echo "Pipe a process list into this, e.g.   psl vim |killproc"
+    return 1
+  fi
+  printf "Killing (${@:--1} processes: " >&2
+  awk '{printf $2" "}' |tee /dev/stderr |$sudo xargs kill ${1:+"$@"}
+}
+
+debugme "done ps, start who"
+
+#[ -n "$CYGWIN" ] && who() { qwinsta ${1:+"$@"}; /usr/bin/who ${1:+"$@"}; }
+#[ -n "$CYGWIN" ] && who() { query user ${1:+"$@"}; /usr/bin/who ${1:+"$@"}; }
+[ -n "$CYGWIN" ] && alias who="query user; netstat |sed '/^[^:]*:3389/!d'; who"
+
+debugme "done who, start LS stuff"
+
+# Thrown into bourne shell to solve stupid resize issue
+# "esize: unknown character, exiting."
+if we_have resize
+  then do_resize() { eval `sh -c 'resize 2>/dev/null'`; }
+  else do_resize() {
+    [ -z "$COLUMNS" ] && COLUMNS=80
+    [ -z "$LINES" ]   && LINES=24
+    export COLUMNS LINES
+  }
+fi
+
+# This is a BSD thing.  It should imply ls -G (for colors)
+export CLICOLOR=1
+
+# ls                        (why does which_a FAIL w/ zsh sometimes?!)
+for which_ls in `type -a ls |sed -e '/^ *ls is \//!d' -e 's//\//'`; do
+  t="`$which_ls --version 2>&1`"
+  if [ "$t" != "${t#*Stallman}" ]; then
+    gnu_ls="$which_ls"
+    break
+  fi
+done
+unset which_ls t
+if [ -x "$gnu_ls" ]; then
+  unfun ls
+  [ "$gnu_ls" = "`command -v ls`" ] && gnu_ls="ls" # nix the path if possible
+  export gnu_ls
+  # cool shorthand for getting colors up $(using the conf file if it exists)
+  eval `dircolors --sh $($gnu_ls -d ~/.dircolors 2>/dev/null) 2>/dev/null`
+
+  # Usage: _ls_colors_add BASE NEW [NEW...]
+  # Have LS color given NEW extensions the way BASE extension is colored
+  # As posted to https://unix.stackexchange.com/a/178816/87770
+  _ls_colors_add() {
+    local BASE_COLOR="${LS_COLORS##*:?.$1=}" NEW
+    if [ "$LS_COLORS" != "$BASE_COLOR" ]; then
+      BASE_COLOR="${BASE_COLOR%%:*}"
+      shift
+      for NEW in "$@"; do
+        if [ "$LS_COLORS" = "${LS_COLORS#*.$NEW=}" ]; then
+          LS_COLORS="${LS_COLORS%%:}:*.$NEW=$BASE_COLOR:"
+        fi
+      done
+    fi
+    export LS_COLORS
+  }
+  _ls_colors_add zip xpi jar
+  _ls_colors_add ogg opus
+
+  alias ls="$gnu_ls"' -ph --color=auto'
+  alias l.='ls -A -I"[^.]*"'
+  alias lg='ll -gG'
+  if we_have zstyle compdef; then # zsh, set completion
+    compdef _ls l.  # this does not work...
+  fi
+
+  if ! we_have perl lgg; then # I wrote a nice perl script for this instead
+    get_alias() {  # (zsh doesn't use aliases in functions, so go get the alias)
+      [ -n "$1" ] \
+      && alias "$1" |sed -e "s/^$1=.//" -e "s/^alias $1=.//" -e s/.$// |grep . \
+      || echo "$@"
+    }
+    do_ls() { `get_alias $gnu_ls -h` "${@:-.}"; }
+    # make sure egrep -m1 is okay by testing it
+    [ "$($gnu_ls -d . .. |egrep -c -m1 . 2>/dev/null)" = 1 ] && grepm='-m1'
+
+    lgg() {
+      do_resize
+      local n=".{$((${COLUMNS:-80} + 1))}"
+      # grep -m1 will stop ls after 1 hit.  -c ensures output is a number
+      if [ 0 -lt $(do_ls -lGg "$@" |egrep -c $grepm "$n"|grep . || echo 0) ]
+        then do_ls --color=always -lgG "$@" |sed "s/^[^ ][r-][^ ]* *[0-9]* //"
+        elif [ 0 -lt $(do_ls -l "$@" |egrep -c $grepm "$n" |grep . || echo 0) ]
+          then do_ls -lGg "$@"
+        else do_ls -l "$@"
+      fi
+    }
+  fi
+
+elif [ -n "$BSD" ]; then  # we're in bsd w/out gnu tools
+    export LSCOLORS="exgxfxDacxBaBaCaCaeaEa"  # colors like GNU
+    alias ls='ls -phG' # G for color, could also set export CLICOLOR=true
+    #alias l.='ls -d .*'
+    function l.() { 
+      # apparently this won't use the alias in zsh; how do I better force that?
+      #local lsd="$(alias ls|sed "s/^[^']*'\([^']*\)'$/\1/") -d"
+      #local lsd="$(alias ls|sed -e "s/^ls='//" -e "s/'$//") -d"
+      #local lsd="ls -phG -d"
+      local lsd="$(dealias ls) -d"
+      if [ "$1" = "-l" ]; then
+        lsd="$lsd $1"
+        shift
+      fi
+      if [ $# = 0 ]
+        then $lsd .* # this ignores . and .. (wow)
+        else for dir in "$@"; do 
+          pushd "$dir" >/dev/null && $lsd .* && popd >/dev/null
+        done
+      fi
+    }
+    alias ll.='l. -l'
+    # group to size 8, long listing, scrap out owner and group
+    function lg() {
+      local CLICOLOR_FORCE=
+      if [ -t 1 ]; then CLICOLOR_FORCE=true; fi # colors if out=term
+      LS_COLWIDTHS=0:0:0:0:8:0:0:0 $GRC `dealias ls` -l "$@" \
+        |perl -pne 's:(^[^ ]+ +[0-9]+ )[^ ]* *.{8}:$1:'
+    }
+else alias ls='ls -F'
+fi
+alias ll='ls -l'
+if [ -n "$GRC" ]; then
+  unfun ll
+  function ll() {
+    local color= CLICOLOR_FORCE
+    if [ -t 1 ] || [ "$CLICOLOR_FORCE" = true ]; then
+      if [ -z "$BSD" ]; then color="--color=always"; fi
+      CLICOLOR_FORCE=true
+    else
+      CLICOLOR_FORCE=
+    fi
+    $GRC `dealias ls` -l $color ${1+"$@"}
+  }
+fi
+alias l. >/dev/null 2>&1 && alias ll.="$(dealias l. 's/^ls/ll/')"
+
+# from http://www.commandlinefu.com/commands/view/10592/
+we_have tree || function tree() {
+  local dirs_only=''
+  case $1 in
+    -d )   dirs_only="-type d"; shift ;;
+    -?* )  [ ! -r "$1" ] && echo "Usage: tree [-d] [PATH...]" && return 1 ;;
+  esac
+  find "${@:-.}" $dirs_only |sed 's:[^-][^/]*/:--:g; s/^-/ |/'
+}
+
+# Allows `find ... -print0 |xargs -0` to be simply `find ... |xargsn`
+if xargs --help 2>&1 |grep -q '\[-d[| ]\S*delim'; then  # currently GNU-only
+  alias xargsn='xargs -d "\n"'
+elif we_have perl; then
+  alias xargsn='perl -pne "s/\n/\0/" |xargs -0'
+else
+  # Without a newline, print the line ($0) and a character at code zero (null).
+  alias xargsn="awk '{printf $qq%s%c$qq, \$0, 0}' |xargs -0"
+fi
+
+debugme "done LS, start file mods"
+
+alias same="$GRC diff -sq"
+#alias mv='mv -i'
+#alias cp='cp -i'
+alias cave='rsync -Pz -cave ssh --timeout=179' # secure vetted archiving
+if [ -n "$GRC" ] && we_have grcat && echo test |grcat conf.diff >/dev/null 2>&1
+  then diffcolor() { grcat conf.diff; }
+
+  # As I posted to https://unix.stackexchange.com/a/178816/87770
+  else diffcolor() {
+    #perl -pne '$_="\e[1;" . (/^-/?31:/^\+/?32:35) . "m$_\e[0;0m" if /^[\@+-]/'
+    perl -e '
+     my $ydiff = 1;
+     while (<>) {
+       chomp;
+       $ydiff = 0 if /^[ <>\@+-]/ or ($. == 1 && /^\d+[a-z]{1,5}\d+$/);
+       my $color = "";
+       if (! $ydiff && /^[\@+-<>]/) {
+         $color = (/^[<-](?!--$)/ ? 1 : /^[+>]/ ? 2 : 5);
+       } elsif ($ydiff && /\t {6}([<|>])(?:\t|$)/) {
+         $color = ($1 eq "<" ? 1 : $1 eq ">" ? 2 : 4);
+       }
+       $color ? printf ("\e[1;3%dm%s\e[0;0m\n",$color,$_) : print "$_\n";
+     }
+    '
+  }
+fi
+we_have dwdiff && alias dwdiff='dwdiff -c'
+
+#_tardiff_prep() {
+#  perl -pne 'if(/\x00{4}/) { s/^\x00*([^\x00]).*/\x0==> $1 <==/ }' ${1+"$@"};
+#}
+#
+#tardiff() {
+#  if [ $# = 2 ]; then
+#    gvimdiff -R <(_tardiff_prep "$1") <(_tardiff_prep "$2")
+
+
+# a zsh/bash bug can cause an above line (where?) to define perl() (huh?!)
+if type perl 2>&1 |grep -l 'is a *[^ ]* function' >/dev/null; then
+  unfun perl
+fi
+
+# vim
+if we_have vim
+  then EDITOR="vim"
+    if [ "$TERM" = "dtterm" ]
+      then alias vim='DISPLAY="" vim'
+      else alias vim='TERM=xterm-color DISPLAY="" vim'
+    fi
+    alias vi=vim
+    which_view=`command -v view 2>/dev/null`
+    if [ "${which_view%ew}m" != "`command -v vim`" ]
+      then alias view='vim -R'
+    fi
+    unset which_view
+  else EDITOR="vi"; alias vim=vi
+fi
+alias :e='vim'
+alias qa='echo OOPS; return 1337'  # another option is `clear` but I prefer ^L
+alias :q=qa
+alias :qa=qa
+
+# less
+if we_have less
+  then PAGER='less -MrsXi'
+       less --help 2>&1 |grep -l "^ *-F" >/dev/null && PAGER="$PAGER"F
+       alias less="$PAGER"
+       if we_have zless 
+         then alias zless="z$PAGER"
+         elif we_have zcat
+           # tricks bash into acceptance
+           then zless_fun () { zcat |less; }; alias zless=zless_fun
+         elif we_have gzip
+           then zless_fun () { cat |gzip -d -c - |less; }; alias zless=zless_fun
+       fi
+  else alias less='more'
+fi
+alias man='LANG=C man'
+alias cless='less --RAW-CONTROL-CHARS'
+
+export EDITOR PAGER
+
+#alias nocom='GREP_OPTIONS="" grep "^[^#]"'
+alias nocom='sed -e "/^[^#]/!d" -e "s/[	 ]*$//"'
+COMMENT_REGEX='^[^#]+(?:(?<=\\)#[^#]*)*(?<!\s)'
+alias nocomi='GREP_COLORS=ms= grep -Po "$COMMENT_REGEX"'
+
+test_string="hello world"
+
+#if ! we_have _s_exp; then
+#  if we_have perl; then
+#    _s_exp() { perl -pne "$@"; }
+#  elif [ "`echo $test_string |sed -r 's/^(.{3}).*/\1/' 2>&1`" = hell ]; then
+#    if [ "$test_string" != "${test_string//l/g/}" ] 2>/dev/null; then
+#      _s_exp() {
+#        set "${@//\$\//\\$$}"; set "${@//\$/\\}"; sed -r -e "${@//\\$$/\$/}"
+#      }
+#    else
+#      _s_exp() {
+#        local t arg 2>/dev/null
+#	t=$(mktemp 2>/dev/null || echo /tmp/sexp.$$)
+#        (
+#          for arg in sed -r "$@"; do
+#            # I spent HOURS trying to properly escape this for var subst...
+#            # quotes, backslashes, and dollars all got garbled.
+#            printf "\"$arg\" " |sed -r 's/[$]([0-9])/\\\1/g'
+#          done
+#        ) >$t
+#        sh $t
+#        rm -f $t
+#      }
+#    fi
+#  fi
+#fi
+
+if we_have perl; then
+  export _trunc2_tabs="-mText::Tabs"
+  perl $_trunc2_tabs -e1 2>/dev/null || unset _trunc2_tabs # load Text::Tabs?
+
+  # Usage: trunc2 [-a AFTER | -b BEFORE | -m | -r] [-u] [FILE...]
+  trunc2() {
+    local arg pre post dots=1   # defaults to -a 0
+    # TODO: color the hole instead of ellipsis when -t 1 and not -u
+    while getopts A:a:B:b:cmru arg; do
+      case "$arg" in
+        (  [Aa] ) post="$OPTARG" ;;	# -a AFTER
+        ( [Bbr] ) pre="${OPTARG:-0}" ;;	# -b BEFORE, -r = -b 0
+        ( [cm]  ) post=$(((COLUMNS-1)/2)) ;; # -m/-c for middle/center
+        (   u   ) dots=3 ;;		# use 3 dots instead of ellipsis
+        (   *   ) echo "Usage: $0 [-a|b NUM] [-r] [FILE...]" >&2; return 2 ;;
+      esac
+    done
+    shift $((OPTIND-1))
+    if [ "${post:--1}" -ge 0 ] 2>/dev/null
+      then pre=$((COLUMNS-post-dots))
+      elif [ -z "$pre" ]; then pre=$((COLUMNS-dots))
+    fi
+    perl $_trunc2_tabs -pne '
+      binmode STDOUT, ":utf8";
+      my $more = ('$dots' == 3 ? "..." : "\x{2026}");
+      if ($ENV{_trunc2_tabs}) { $_ = Text::Tabs::expand($_); }
+      s/^(.{'$pre'}).{'$dots'}.+(.{'$((COLUMNS-pre-dots))'})$/$1$more$2/;
+    ' ${1+"$@"}
+    # TODO (prolly not): properly revert exact original tabs w/out unexpand().
+    #   I think I can do this with each of $1 and $2 vs substr($orig).
+  }
+fi
+
+if ! we_have trunc; then
+  if we_have perl trunc2; then
+    alias trunc=trunc2
+  elif [ "`echo $test_string |egrep -o '^.{3}' 2>/dev/null`" = hell ]; then
+    trunc() {
+      local A B 2>/dev/null
+      B=^
+      do_resize
+      if [ "$1" != "${1#-[!r]}" ]; then
+        echo "Truncate a file or input (save right with -r) to stdout." >&2
+        echo "Usage: trunc [-r] [FILE...]" >&2
+        return 1
+      fi
+      [ "-r${1#-r}" = "$1" ] && shift && unset B && A='$'
+      GREP_COLORS=ms= egrep -o "$B.{0,$COLUMNS}$A" ${1+"$@"}
+    }
+  fi
+fi
+unset test_string
+
+arms() {
+  local L=10 input
+  case "$1" in
+    (-[0-9]*)	L="${1#-}"; shift ;;
+    (-n[0-9]*)	L="${1#-n}"; shift ;;
+    (-n)	L="$2"; shift 2 ;;
+    (-*)	echo "Display input(s)' truncated head and tail" >&2
+    		echo "Usage: $0 [-n LINES] [FILE...]" >&2
+    		return 2 ;;
+  esac
+  if [ -s "$1" ] && [ "$*" = "${*#*/dev/stdin}" ]; then
+    for input in "$@"; do
+      [ "$input" != "$1" ] && echo # blank line between inputs
+      [ $# -gt 1 ] && echo "==> $input <==" # headers for multi-input only
+      head -n$L "$input"
+      echo "--"
+      tail -n$L "$input"
+    done |trunc
+    return
+  fi
+  # as posted to https://stackoverflow.com/a/33110779/519360
+  awk -v L="$L" '
+    FNR <= L { print } # head
+    NR > L  { out[NR%L] = $0 } # save lines for tail
+    END {
+      i = (NR < 2*L ? 0 : NR);
+      if (NR > 2*L) print "--";
+      do print out[++i%L]; while (i % L != NR % L);
+    }
+  ' ${1+"$@"} |trunc
+}
+
+if ! we_have oneline; then
+  alias oneline="perl -pne 's/[\r\n]+/ /g'"
+fi
+
+# can work better than dos2unix
+alias fix_linebreaks='perl -pne "s//\n/g"'
+
+debugme "done filemods, start userstuff"
+
+[ "$OS" = AIX ] && we_have smitty && alias smitty='TERM=vt100 PATH=/usr/ucb:/sbin:/bin:/usr/sbin:/usr/bin:/usr/bin/X11:/etc HOME=/ sudo smitty'
+
+if we_have sudo; then
+  # I don't use this any more
+  #id bin >/dev/null 2>&1 && alias subin='sudo -u bin'
+  id $USER-web >/dev/null 2>&1 && alias suw="sudo -u $USER-web"
+
+  if we_have visudo && [ -f /etc/sudoers.d/local ]; then
+    visudo() {
+      local sudo=
+      [ "$(id -u)" = 0 ] || sudo=sudo
+      if [ $# = 0 ]
+        then command $sudo visudo -f /etc/sudoers.d/local
+        else command $sudo visudo "$@"
+      fi
+    }
+  fi
+
+  # suppress ZSH correct_all from correcting 'sudo vim file' to 'sudo .vim file'
+  if we_have setopt && setopt |grep -qix correct_all; then
+    ZSH_SUDO_PRECOMMAND=nocorrect
+  fi
+  sudo() {
+    local RETVAL
+    $ZSH_SUDO_PRECOMMAND command sudo ${1+"$@"}
+    RETVAL=$?
+    # in the case of e.g. apt-get install package, update tab completion cache
+    # (this should be fast enough to not require a check)
+    hash -r
+    return $RETVAL
+  }
+fi
+
+if we_have bc; then
+  bc() {
+    if [ "${*:--ql}" = -ql ] && [ -s "$HOME/.bcrc" ]
+      then command bc -ql "$HOME/.bcrc"
+      else command bc -ql ${1+"$@"}
+    fi
+  }
+fi
+
+# peek at users - much faster than finger
+#alias peek='grep . /etc/passwd /etc/group /data/jail/etc/passwd /data/jail/etc/group|grep -i'
+#alias peek_local='grep . /etc/passwd* /etc/group* 2>/dev/null|sed -e "s:^/etc/::" -e "s/^[^:]*:/& /"|grep -i'
+alias peek_local='cat /etc/passwd |grep -i'
+# if NIS passwd can be called  and  there are more than 8 users in that db
+if we_have getent
+  then alias peek='getent passwd |grep -i'
+elif we_have ypcat && ypcat passwd >/dev/null 2>&1 \
+&& [ "$(ypcat passwd 2>/dev/null |grep -c .)" -gt 8 ];
+  then alias peek='ypcat passwd |grep -i'
+  else alias peek=peek_local
+fi
+# GNU coreutils has pinky, "a lightweight 'finger' program"
+if ! we_have finger && we_have pinky
+  then alias finger='pinky -l'
+fi
+
+debugme "done userstuff, start filesystem"
+debugme "df"
+
+unfun df du
+if df -h / >/dev/null 2>&1 
+  then alias df='df -h'
+  else df -k / >/dev/null 2>&1 && alias df='df -k'
+fi
+
+debugme "du"
+
+TMP="$(du --help 2>&1)"
+if [ "$TMP" != "${TMP#*-h[^a-z][^a-z]}" ]
+  then alias du='du -h'
+  else alias du='du -k'
+fi
+if [ "$TMP" != "${TMP#*--max-depth}" ]
+  then alias dum='du --max-depth'	# GNU du
+  elif [ "$TMP" != "${TMP#*-d depth}" ]; then alias dum='du -d' # BSD/Solaris du
+  else
+    function du() { command du ${1+"$@"} |sed '$!d'; }
+fi
+
+debugme "path/cd"
+
+# Populate the array DIRHIST with the last 9 dirs visited (not for direct use)
+# For zsh, add this to your precmd(), e.g.   function precmd() { __path_log; }
+# For bash, add to $PROMPT_COMMAND, e.g.     PROMPT_COMMAND="__path_log"
+__path_log() {
+  local d dh first=true
+  if [ -d "$__DIRHIST" ] && [ "$__DIRHIST" != "$PWD" ]; then
+    # $__DIRHIST is the last dir we saw, but we miss foo in 'cd foo; cd bar'
+    # so we use $OLDPWD to catch it; so you'd need a THIRD change to fool us.
+    for d in "$__DIRHIST" "${DIRHIST[@]}"; do
+      if [ -n "$first" ]; then unset DIRHIST first; DIRHIST[1]="$OLDPWD"; fi
+      if [ "$OLDPWD" = "$d" ] || [ "$PWD" = "$d" ] || [ ! -d "$d" ]; then
+        continue
+      fi
+      dh=$((1+${#DIRHIST[@]}))
+      [ $dh -lt 9 ] && DIRHIST[$dh]="$d" # push up to nine directories
+    done
+  elif [ -z "$__DIRHIST" ]; then
+    DIRHIST[1]="$OLDPWD"
+  fi
+  __DIRHIST="$PWD"
+}
+
+#alias cdo='cd "$OLDPWD"' # could also do cdo='cd -' but that creates output
+# interesting bug: this function redefines cd if cdo is an alias.
+#alias cdo >/dev/null 2>&1 && unalias cdo 2>/dev/null
+unfun cdo
+
+# As I posted to https://unix.stackexchange.com/a/179032/87770
+cdo() {
+  local d n=0
+  if [ -z "${DIRHIST[1]}" ] || [ -z "$1" ]; then
+    cd ${OLDPWD+"$OLDPWD"}
+    return $?
+  fi
+  case "$1" in
+    0 )    cd ;;
+    ls )   for d in "${DIRHIST[@]}"; do
+             echo "$((n=n+1)) <$d>"
+           done |sed "s:<$HOME:<~:;s:</home/:<~:" |column \
+             |GREP_COLORS='ms=0;32' grep --color -e '\b[0-9] <' -e '>'
+           ;;
+    [1-9]) cd "${DIRHIST[$1]}"; return $? ;;
+    * )    [ -d "$2" ] && cd "$2" || echo "Usage: $0 [NUM|ls]" >&2 && return 2;;
+  esac
+}
+
+alias cd..='cd ..'
+
+#CDPATH="$CDPATH:..:~:~/tmp:/tmp"
+
+# Usage: md [NEWDIR...]
+# Make a directory and change to it.  Creates a temporary dir w/out args.
+# smarter version if needed: https://unix.stackexchange.com/a/9124/87770
+md() {
+  [ $# = 0 ] && set $(mktemp -d)
+  mkdir -p ${1+"$@"} && [ -d "$1" ] && cd "$1"
+}
+we_have compdef && compdef md=mkdir
+
+debugme "done filesystem, start ping"
+
+# fix dumb solaris ping
+[ "$OS:$(type ping 2>/dev/null)" = "SunOS:/usr/sbin/ping" ] \
+  && SOL_PING='-s' && alias ping="$GRC ping -s"
+
+if we_have timed-debug
+  then alias pin="timed-debug $GRC ping -n $SOL_PING"
+  else alias pin="$GRC ping -n"
+fi
+
+debugme "done ping, start poke"
+
+if we_have ncat; then # ncat is MUCH faster than nc
+  _sp_probe() { ncat --send-only --recv-only -w 334ms "$@"; }
+elif we_have nc; then # netcat is sometimes MUST faster than telnet
+  _sp_probe() { nc -zw1 "$@"; }
+else
+  _sp_probe() { echo X |telnet -e X "$@"; }
+fi
+probe() {
+  local P="${1#*:}"
+  [ "$P" = "$1" ] && P="${2:-80}"
+  [ "$P" = 0 ] && P=6000	# "port" 0 refers to X11 display 0, port 6000
+  _sp_probe ${1%%:*} $P >/dev/null 2>&1
+}
+
+if ! we_have poke; then
+poke() {
+  local target say=true fail='' port
+  [ "$1" = '-v' -o "$1" != "${1##--v}" ] && shift && say=echo
+  for target in "$@"; do ! probe $target && fail="$fail $target" && break; done
+  if [ -z "$fail" ] 
+    then $say "successfully connected to each of $@"
+    else $say "could not connect to$fail"; false
+  fi
+}
+fi
+
+[ -r "~/.tsocks.conf" ] && export TSOCKS_CONF_FILE="~/.tsocks.conf"
+
+debugme "done poke, start mail tools"
+
+if we_have openssl; then
+  telnet_ssl() { openssl s_client -connect $1${2:+:}$2; }
+  [ -z "$BASH_NO_DASH_FUNC" ] && telnet-ssl() { telnet_ssl ${1:+"$@"}; }
+  telnet_tls() {
+    local PORT PROTOCOL
+    if [ -n "$2" ]
+      then PORT="$2"
+      else PORT="${1#*:}"
+    fi
+    if ! [ "$PORT" -gt 0 ] 2>/dev/null || [ "$PORT" -gt 65535 ]; then
+      if we_have srv2port
+        then PORT=`srv2port "$PORT" |sed 1q 2>/dev/null` # convert to a number
+        else echo "Unsupported or invalid port '$PORT'"; return 1
+      fi
+    fi
+    if echo "$PORT" |egrep 'pop|^(995|110)$' >/dev/null;
+      then PROTOCOL=pop3
+      else PROTOCOL=smtp
+    fi
+    openssl s_client -connect "${1%:*}:$PORT" -starttls "$PROTOCOL"
+  }
+  [ -z "$BASH_NO_DASH_FUNC" ] && telnet-tls() { telnet_tls ${1:+"$@"}; }
+fi
+
+if we_have alpine && ! we_have pine; then alias pine=alpine; fi
+
+
+debugme "done mail tools, start net tools"
+
+
+# show A and AAAA records for each given host, no host shows LAN addresses
+# Usage: getip [HOST...]
+getip() {
+  local query
+  if [ $# = 0 ]; then 
+    ifconfig |awk '$1 == "inet" && $2 !~ /^127/ {print $2; r=1} END {exit !r}'
+  else
+    for query in "$@"; do
+      host "$query"
+    done |awk '$2 == "has" { print $NF; r=1 } END { exit !r }'
+  fi
+}
+
+
+extract_ips() {
+  local cidr cidr2ips
+  cidr='(?:[01]?\d?\d|2(?:[0-4]\d|5[0-5]))'
+  we_have cidr2ips && cidr2ips=cidr2ips || cidr2ips=cat
+
+  if [ -n "$GREP_P" ]; then
+    echo still in writing...
+    else if we_have perl; then
+      echo still in writing...
+    fi
+  fi
+}
+
+if echo foo |grep -Po 'f(?:o)(?!g)' >/dev/null 2>&1; then
+  extract_ips() {
+    local cidr cidr2ips
+    cidr='(?:[01]?\d?\d|2(?:[0-4]\d|5[0-5]))'
+    we_have cidr2ips && cidr2ips=cidr2ips || cidr2ips=cat
+    grep -Po '(?<![.-])\b('"$cidr"'(?:\.'"$cidr"'){3)}\b(?![.-])' |$cidr2ips
+  }
+elif we_have perl; then
+  extract_ips() {
+    local cidr2ips
+    we_have cidr2ips && cidr2ips=cidr2ips || cidr2ips=cat
+    perl -ne '
+      my $cidr = qr"(?:[01]?\d?\d|2(?:[0-4]\d|5[0-5]))";
+      while (/(?<![.-])\b($cidr(?:\.$cidr){3})\b(?![.-])/g) { print "$1\n"; }
+    ' |$cidr2ips
+  }
+fi
+
+we_have host && if echo foo |grep -Po 'f(?:o)(?!g)' >/dev/null 2>&1; then
+  ip2host() {
+    local cidr cidr2ips
+    cidr='(?:[01]?\d?\d|2(?:[0-4]\d|5[0-5]))'
+    we_have cidr2ips && cidr2ips=cidr2ips || cidr2ips=cat
+
+    grep -Po '(?<![.-])\b('"$cidr"'(?:\.'"$cidr"'){3)}\b(?![.-])' |$cidr2ips \
+      |xargs -n1 host
+  }
+elif we_have perl; then
+  ip2host() {
+    local cidr2ips
+    we_have cidr2ips && cidr2ips=cidr2ips || cidr2ips=cat
+    perl -ne '
+      my $cidr = qr"(?:[01]?\d?\d|2(?:[0-4]\d|5[0-5]))";
+      while (/(?<![.-])\b($cidr(?:\.$cidr){3})\b(?![.-])/g) { print "$1\n"; }
+    ' |$cidr2ips |xargs -n1 host
+  }
+fi
+
+whead() {
+  local retval_bash retval_zsh PIPESTATUS= pipestatus=
+  if [ $# = 0 ] || [ "$1" != "${1#-*h}" ]; then
+    printf "Displays headers for a website.\nUsage: whead URL\n"
+    return 0
+  fi
+  wget -q --save-headers -O - "$@" \
+    |sed -e '0,/^[^A-Za-z0-9]*$/!d' -e '/^[^A-Za-z0-9]*$/q'
+  retval_bash="${PIPESTATUS[0]}" retval_zsh="${pipestatus[1]}"
+  return $retval_bash $retval_zsh
+}
+
+# http://crunchbanglinux.org/forums/post/83643/#p83643 was inspiration
+# for many of these
+if we_have lsof
+  then alias lsports='lsof -Pni'
+  elif we_have netstat
+    then alias lsports='netstat -nt'
+fi
+
+if we_have ss; then
+  alias estab="ss -p" # my source also uses |grep STA
+fi
+
+if we_have netstat; then
+  alias lsweb="netstat -plan |sed -r '/^ *([^ ]+ +){4}([^ ]+):(80|443).*/!d; s//\2/' |sort |uniq -c |sort -n"
+  alias appson="netstat -lantp | grep -i stab | awk -F/ '{print $2}' | sort | uniq"
+fi
+
+debugme "done network stuff, start desktop stuff"
+
+if [ -n "$DISPLAY" ]; then
+
+  resolution=`xprop -root 2>&1 |sed -e '/ESKTO[P]_GEO.*CARD/!d' -e 's/.*= *//'`
+  res_width=${resolution%, *}
+  res_height=${resolution#*, }
+  resolution=${res_width}x${res_height}
+  if we_have rdesktop \
+  && [ "$res_width" -ge 320 -a "$res_height" -ge 240 ] 2>/dev/null; then # { res
+    res_heads="$(($res_width*4000${ZSH_VERSION+.}/$res_height/5000))"
+    [ "$res_heads" = 0 ] && res_heads=1
+    resdn1="$(($res_width*90000/$res_heads/100000))x$(($res_height*75/100))"
+    resdn2="$(($res_width*80000/$res_heads/100000))x$(($res_height*65/100))"
+    resdn3="$(($res_width*70000/$res_heads/100000))x$(($res_height*55/100))"
+
+    alias rdesktop="rdesktop -K -nAdam_did_it -uAdministrator -a16 -5 -g$resdn1"
+    alias rdesktopbig="rdesktop"
+    alias rdesktopsm="rdesktop -g$resdn2"
+    alias rdesktopsm2="rdesktop -g$resdn3"
+    alias rdesktopbf="tsocks -0 -s localhost:5001 -5 /usr/bin/rdesktop '-K -nAdam_did_it -uAdministrator -a16 -5 -g$resdn1'"
+  fi # } res
+
+  we_have xsri \
+  && alias set_background='xsri --set --geometry=1280x1024+0+0 /usr/share/backgrounds/images/space/hst_orion_nebula_fixed.jpg' \
+  && we_have randln && alias rand_bg='xsri --set --center-y --center-x --color=black "`ls /home/adam/backgrounds/* |randln`"'
+
+fi
+
+debugme "done desktop stuff, start package management"
+
+if we_have dpkg; then
+  _pkg_list() {
+    if [ $# = 0 ]
+      then COLUMNS=200 dpkg -l '*' \
+             |sed -re '/^i\S+\s+(\S+\s+\S+).*/!d' -e 's//\1/'
+      else dpkg -L "$@"
+    fi
+  }
+else
+  alias dpkg=true # fix redhat apt tab completion
+  if we_have rpm; then
+    _pkg_list() {
+      if [ $# = 0 ]; then rpm -qa; else rpm -ql "$@"; fi
+    }
+  elif we_have pacman; then # this is not verified
+    _pkg_list() {
+      pacman -Qlq "$@"
+    }
+  else
+    _pkg_list_by_dir() {
+      cd "$1"
+      shift
+      if [ $# = 0 ]
+        then /bin/ls -1
+        else for pkg in "$@"; do find $pkg*; done
+      fi
+      cd $OLDPWD
+    }
+    if we_have stow && [ `ls /usr/local/stow 2>/dev/null |grep -c .` -gt 1 ]
+      then _pkg_list() { _pkg_list_by_dir /usr/local/stow ${1+"$@"}; }
+      else _pkg_list() { _pkg_list_by_dir /opt ${1+"$@"}; }
+    fi
+  fi
+fi
+
+# zsh completion for contents script
+if we_have contents zstyle compdef && which_a dpkg |grep / >/dev/null; then
+  _contents() { _arguments '*:package:_deb_packages xinstalled'; }
+  compdef _contents contents
+fi
+
+if ! we_have apt-popcon && we_have apt-cache wget; then
+  apt_popcon() {
+    local package KILL_LIBS
+    (
+      echo \#rank # grep query to get title
+      for package in "$@"; do
+        if [ "$package" != "${package#lib}" ]
+          then KILL_LIBS='$1 !~ /^lib/'
+	  else KILL_LIBS=''
+	fi
+        apt-cache search "$package" |awk "$KILL_LIBS"' {print " "$1" "}'
+      done
+    ) |grep -Ff- <(wget -qqO- http://popcon.debian.org/by_inst.gz |gunzip) \
+      | (we_have columns && columns -s || cat) |grep ^
+  }
+  [ -z "$BASH_NO_DASH_FUNC" ] && apt-popcon() { apt_popcon ${1:+"$@"}; }
+  if we_have zstyle compdef; then
+    compdef _contents apt-popcon
+    compdef _contents apt_popcon
+  fi
+fi
+
+_installer_helper() {
+  local RETVAL
+  command "$@"
+  RETVAL=$?
+  hash -r
+  return $RETVAL
+}
+for installer in stow apt apt-get aptitude gdebi rpm yum; do
+  we_have $installer && alias $installer="_installer_helper $installer"
+done
+unset installer
+
+debugme "done pkg management, start stuff that might not exist"
+
+# ruby stuff
+we_have irb && alias irb="irb --readline -r irb/completion"
+we_have fri && alias ri=fri
+
+debugme "ifexist - media"
+
+if command eject -h 2>&1 |grep -q -- "--traytoggle"; then
+  #alias eject='eject --traytoggle'
+  eject() {
+    command eject --traytoggle ${1+"$@"} 2>/dev/null || command eject ${1+"$@"}
+  }
+fi
+
+if we_have gxine; then
+  gxiso() {
+    local iso="$1"
+    shift
+    if [ "$iso" = "${iso#/}" ]; then
+      iso="$PWD/$iso"
+    fi
+    gxine "dvd://$iso" ${1+"$@"} 2>/dev/null
+  }
+fi
+
+if we_have bitrate; then
+  alias mp3bitrate=bitrate
+  we_have mkvbitrate || alias mkvbitrate=bitrate
+else
+  we_have mp3info && alias mp3bitrate='mp3info -rm -p "%f: %r\n"'
+  we_have mkvinfo && bitrate_mkv() {
+    local movie size time tc
+    [ $# = 0 ] && set -- *.mkv
+    (
+      for movie in "$@"; do
+        file -- "$movie" |grep -v EBML.file >&2 && continue
+        size=`du -sk  "$movie" |awk '{print $1}'`
+        time=`mkvinfo "$movie" |awk '/Duration:/ { gsub (/s/,"",$4); print $4}'`
+        tc=`printf "%.0f" "$time"` # round time to integer
+        if [ "$tc" = 0 ] && [ "$size" -gt 62 ]
+          then tc="?"
+          elif we_have timecalc
+            then tc=`timecalc $tc`
+        fi
+        echo "$time^$tc^$size^$movie"
+      done
+    ) |awk -F^ '
+       BEGIN { retval = 1; }
+       /./ {
+         retval = 0
+         size = sprintf("%4.2fM", $3/1024);
+         ($1 == 0 ) ? rate = "?" : rate = sprintf("%4d", $3*8/$1);
+         time = sprintf("%5.1fs", $1);
+         printf "%9s %8s  %4s kbps  %8s\t%s\n", $2, time, rate, size, $4;
+       } END { exit retval; }'
+  }
+fi
+
+we_have mkvinfo && ! we_have mkvbitrate && mkvbitrate() {
+  local mkv sp
+  if we_have bitrate
+    then bitrate ${1+"$@"}
+    elif we_have bitrate_mkv; then bitrate_mkv ${1+"$@"}
+  fi
+  sp=""
+  for mkv in ${1+"$@"}; do
+    if [ -n "$2" ]; then
+      echo "$mkv"
+      sp="  "
+    fi
+    echo
+    mkvinfo -t -z "$mkv" |awk "BEGIN { sp=$qq$sp$qq; }"'
+      $1 == "Statistics" {
+        kbps=sprintf("\n%s  approx kbps: %.1f",sp,$NF/1024);
+        sub(/:/,":\n " sp);
+        gsub(/;/,"\n " sp);
+        print sp $0 kbps;
+      }
+    '
+  done
+}
+
+if we_have pngquant; then
+  # Usage: pngq [quality-range] image...
+  # Lossily compresses given image(s)
+  pngq() {
+    local range image RETVAL
+    range="$1"
+    # first argument could be a quality range or a file
+    if [ ! -s "$range" ] && echo "x$range" |grep -qEx "x[0-9]+-[0-9]+"
+      then shift
+      else range=70-90
+    fi
+    #ls -lLphdGg --color=auto "$@"
+    #pngquant -f --ext .png --quality $range "$@"
+    #ls -lLphdGg --color=auto "$@"
+    for image in "$@"; do
+      ls -lLphdGg --color=auto "$image"
+      pngquant -f --output "$image.new" --quality $range "$image" || RETVAL=$?
+      if ls -1S "$image" "$image.new" |awk -v new="$image.new" '
+        NR==1 && $0==new { exit 1 }'
+      then # new image is smaller.  sync permissions/timestamp and overwrite
+        chmod --reference="$image" "$image.new"
+        touch --reference="$image" "$image.new"
+        mv "$image.new" "$image"
+        ls -lLphdGg --color=auto "$image"
+      else
+        ls -lLphdGg --color=auto "$image.new"
+        echo "new version is larger, purging"
+        rm "$image.new"
+      fi
+    done
+    return $RETVAL
+  }
+fi
+
+if false && we_have curl; then
+  imgur() {
+    local img
+    for img in "$@"; do
+      curl -F "image=@$img" -F key=i_need_a_key_first \
+        https://imgur.com/api/upload.xml |grep -Po '<original_image>\K[^<]*'
+    done
+  }
+fi
+
+debugme "ifexist - pw"
+
+if we_have apg; then
+  # Usage: password_generator NUMBER
+  password_generator() { 
+    apg -a1 -n${1:-6} -m8 -x12 -E "Il1|0O" -M sncl
+  }
+else
+  password_generator() {
+    local length
+    for length in {1..${1:-6}}; do
+      length=$((RANDOM%5+8))
+      LC_ALL=C tr -dc '2-9A-HJ-Za-km-z_`~!@#$%^&*()=+[]{};:,.<>/?-' \
+        < /dev/urandom |head -c$length
+      echo
+    done
+  }
+fi
+
+if we_have reset vigpg \
+&& ! type vigpg 2>/dev/null |grep -q function; then
+  #vigpg=`which_a vigpg 2>/dev/null |grep ^/ |head -n1`
+  vigpg=`which_a -1 vigpg`
+  vigpg() { local R; $vigpg "$@"; R=$?; [ $R != 2 ] && reset; return $R; }
+fi
+if we_have xev; then
+  xevkeys() { xev ${1:+"$@"} |sed '/[KB][eu][a-z]*[PR][re][a-z]* ev/,/^$/!d'; }
+fi
+if we_have pilot-xfer; then
+  alias pilot-xfer='pilot-xfer -p usb:'
+fi
+
+alias '#'='true'
+
+#debugme gmake as make can ge risky...
+
+# if make isn't GNU make, but gmake is, use gmake
+#[ -z "`make -v 2>&1 |grep GNU`" ] && [ -n "`gmake -v 2>&1 |grep GNU`" ] && \
+#  alias make="$GRC gmake"
+
+debugme "lots of conditionals for shfsmount which i never use..."
+
+#we_have shfsmount && we_have sudo && alias mount-mailboxes='sudo shfsmount -o uid=`id -u` -c "ssh %u@%h ssh -i ~/.ssh/retep2post %u@post bash" adam@retep: post'
+
+#we_have screen && alias screen="TERM=xterm screen"
+we_have screen && we_have screen-adam && alias screen=screen-adam
+
+# All this because ssh-keyscan can't generate remote sshfp entries
+if we_have ssh-keyscan ssh-keygen; then
+  ssh_keygen_sshfp() {
+    local TMP host type
+    # tmp is needed because ssh-keygen refuses to use /dev/stdin
+    TMP=$(mktemp)
+    trap "rm -f $TMP" 0 1
+    for host in ${1+"$@"}; do
+      for type in ed25519 rsa ecdsa dsa; do
+        ssh-keyscan -t $type "$host" 2>&1 |sed -e "/^$host /"'!d' -e s/// >$TMP
+        ssh-keygen -r "$host" -f $TMP 2>&1 \
+          |sed -e "s:$TMP:$host:" -e "s/ v2 / $type /"
+      done
+    done |grep -v "^failed to read "
+  }
+  [ -z "$BASH_NO_DASH_FUNC" ] \
+    && ssh-keygen-sshfp() { ssh_keygen_sshfp ${1+"$@"}; }
+fi
+
+debugme "vissh"
+
+# ssh daemon is running
+if [ -n "$SSH_TTY" ] || probe localhost 22 || psax|grep -l sshd >/dev/null; then
+  vissh() {
+    local uhome
+    if id "$1" >/dev/null 2>&1; then
+      uhome=`(
+        if we_have getent
+          then getent # ${1:+"$@"}
+          else cat /etc/passwd
+        fi
+      ) |awk -F: "/^$1:/"'{printf $6}'`
+    fi
+    "${EDITOR:-vi}" "${uhome:-$HOME}/.ssh/authorized_keys"
+  }
+  if we_have zstyle compdef; then # zsh, set completion for vissh
+    compdef _users vissh
+  fi
+fi
+
+if we_have tetris; then
+  true
+elif we_have tetris-bsd; then
+  alias tetris=tetris-bsd
+elif we_have autoload; then
+  alias tetris="autoload -U tetriscurses; tetriscurses"
+fi
+
+#alias starwars='telnet towel.blinkenlights.nl'
+#drugs() { perl -e'$|++;printf"\e[%c",65+rand()*4 until select $x,$x,$x,.02'; }
+
+#we_have glxgears \
+#  && alias glxgears='glxgears -iacknowledgethatthistoolisnotabenchmark'
+
+debugme "trying to automagically determine display if it was not set"
+
+if [ -z "$DISPLAY" ] && we_have xauth; then
+  #is_this_me=`who|perl -pne 's:^.*\(::g;s:\).*$::g'`
+  #host $is_this_me >/dev/null 2>&1 && DISPLAY=$is_this_me:0
+  #is_this_me=`echo $SSH_CLIENT |sed 's/ .*$//g'`
+  is_this_me="${SSH_CLIENT%% *}"
+  is_this_me="${is_this_me##*:}"
+  if [ -n "$is_this_me" ] && poke "$is_this_me:6000"; then
+    export DISPLAY=$is_this_me:0
+    echo '$DISPLAY'" was not set, so I guessed and set it to '$DISPLAY'"
+  fi
+  unset is_this_me
+fi
+
+[ -r ~/.aliases.local ] && source ~/.aliases.local
+
+debugme "rebuild command hash"
+hash -r
+
+unset TMP
+
+debugme "done."
+
+# vim:syn=sh:

@@ -1,0 +1,82 @@
+! URxvt customized defaults
+URxvt*reverseVideo: true
+URxvt*visualBell: true
+! for unix only (otherwise, use xterm or xterm-color)
+URxvt*termName: xterm
+URxvt*saveLines: 5000
+URxvt*transparent: true
+!URxvt*transpscrollbar: true
+URxvt*shading: 25
+URxvt*background: white
+! URxvt*font: -*-clean-medium-r-*-*-14-*-*-*-*-*-*-*
+URxvt*font1: 5x7
+URxvt*font2: 6x10
+URxvt*font: 6x13
+URxvt*font3: 7x14
+URxvt*font4: 9x15
+! blue is usually too dark to see.  this fixes that
+URxvt*color4: RoyalBlue
+URxvt*color12: RoyalBlue
+!URxvt*keysym.M-C-1
+URxvt.perl-ext-common: default,tabbed
+!URxvt.inheritPixmap: true
+!URxvt.shading: 60
+
+! Aterm customized defaults
+Aterm*reverseVideo: true
+Aterm*visualBell: true
+! for unix only (otherwise, use xterm or xterm-color)
+Aterm*termName: xterm
+Aterm*saveLines: 5000
+Aterm*transparent: true
+!Aterm*transpscrollbar: true
+Aterm*shading: 25
+Aterm*background: white
+! Aterm*font: -*-clean-medium-r-*-*-14-*-*-*-*-*-*-*
+Aterm*font1: 5x7
+Aterm*font2: 6x10
+Aterm*font: 6x13
+Aterm*font3: 7x14
+Aterm*font4: 9x15
+! blue is usually too dark to see.  this fixes that
+Aterm*color4: RoyalBlue
+Aterm*color12: RoyalBlue
+
+! from LinuxJournal oct07 p18 "tech tips" - Colorize Man Pages
+VT100*colorULMode: on
+VT100*colorUL: yellow
+VT100*underLine: off
+VT100*colorBDMode: on
+VT100*colorBD: red
+Aterm*colorULMode: on
+Aterm*colorUL: yellow
+Aterm*underLine: off
+Aterm*colorBDMode: on
+Aterm*colorBD: red
+Rxvt*colorULMode: on
+Rxvt*colorUL: yellow
+Rxvt*underLine: off
+Rxvt*colorBDMode: on
+Rxvt*colorBD: red
+
+! Xterm customized defaults
+XTerm*visualBell: true
+XTerm*termName: xterm
+XTerm*saveLines: 5000
+XTerm*scrollBar: true
+! XTerm*background: white
+XTerm*background: #2a3640
+! XTerm*font: -*-clean-medium-r-*-*-14-*-*-*-*-*-*-*
+XTerm*reverseVideo: true
+XTerm*color4: RoyalBlue
+XTerm*color12: RoyalBlue
+
+! XFontSel customized defaults
+XFontSel*printOnQuit: true
+XFontSel*showUnselectable: false
+XFontSel*menu.options.showUnselectable: false
+
+! XFCE settings
+Xft.dpi: 96
+Xft.hinting: 1
+Xft.hintstyle: hintmedium

@@ -1,0 +1,83 @@
+# vim:syn=zsh
+
+#autoload -U compinit
+#compinit
+
+# history stuff
+setopt APPEND_HISTORY
+setopt HIST_IGNORE_SPACE	# don't store e.g. ` ls` in history
+if [ "${ZSH_VERSION%%.*}" -gt 3 ]; then
+  setopt HIST_IGNORE_DUPS	# really only needs v2+, but I wanted it here
+  setopt SHARE_HISTORY
+  setopt INC_APPEND_HISTORY
+  setopt HIST_EXPIRE_DUPS_FIRST
+  setopt HIST_FIND_NO_DUPS
+  setopt HIST_REDUCE_BLANKS
+  setopt HIST_NO_STORE
+  setopt EXTENDED_HISTORY
+fi
+HISTFILE=~/.zsh/zsh_history
+SAVEHIST=50000
+HISTSIZE=50000
+if [ -w "$HISTFILE" ] || touch "$HISTFILE" 2>/dev/null
+  then 
+    chmod 620 "$HISTFILE" 2>/dev/null
+  else
+    echo "Cannot write to $HISTFILE, not keeping history"
+fi
+# full history.  uses HIST_IGNORE_SPACE so this doesn't add to the history
+#alias history=" fc -l 0 -1"
+function _my_history() { fc -l ${1+"$@"} 0 -1; }
+alias history=" _my_history -iD"
+alias hash=" hash"
+
+limit coredumpsize 0
+
+# only if zsh is newer than version 2
+if [ "${ZSH_VERSION%%.*}" -gt 2 ]; then # {
+
+
+if command -v zstyle >/dev/null 2>&1; then
+  [ -r "$ZDOTDIR/completion" ] && source "$ZDOTDIR/completion"
+fi
+#zstyle :compinstall filename '/home/adam/.zshrc'
+
+if [ "${ZSH_VERSION%%.*}" -gt 3 ]; then
+  autoload -U compinit && compinit $ZSH_INSEC
+else
+  setopt AUTO_LIST
+fi
+unset ZSH_INSEC # set to "-u" in ~/.zsh/sysconf to ignore insecure zsh comp file
+unset COMP # $COMP is set to '-' by the completion script
+
+setopt MULTIOS # multiple outstreams, e.g. echo foo >bar >baz
+
+setopt PUSHD_IGNORE_DUPS
+
+unalias run-help 2>/dev/null
+autoload run-help
+
+setopt COMPLETE_IN_WORD #allow tab completion in the middle of a word
+
+#setopt CORRECT_ALL # spelling correction
+setopt CORRECT # spelling correction (commands only)
+
+setopt NOBGNICE # keep background processes at full speed
+#setopt HUP     # restart running processes on exit
+
+setopt SH_WORD_SPLIT
+
+zmodload zsh/mathfunc
+autoload zcalc
+
+## automatically decide when to page a list of completions
+#LISTMAX=0
+
+## disable mail checking
+MAILCHECK=0
+
+# autoload -U colors
+#colors
+
+
+fi # }

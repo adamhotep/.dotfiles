@@ -1,0 +1,18 @@
+# ~/zshenv is sourced on all invocations of the shell, unless the -f option 
+# is set.  It should contain commands to set the command search path, plus 
+# other important environment variables.  .zshenv should not contain 
+# commands that product output or assume the shell is attached to a tty.
+#
+
+ZDOTDIR=$HOME/.zsh
+
+USERNAME=`id -un 2>/dev/null`
+[ -n "$USERNAME" ] && USER=$USERNAME && LOGNAME=$USERNAME
+
+HOSTNAME=`uname -n 2>/dev/null |sed 's/\..*$//g' 2>/dev/null`
+[ -n "$HOSTNAME" ] && HOST=$HOSTNAME
+
+export LOGNAME USER HOST ZDOTDIR
+
+# hide RHEL 6.6 bashism: /etc/profile.d/history.sh:1: command not found: shopt
+command -v shopt >/dev/null 2>&1 || shopt() { true; }

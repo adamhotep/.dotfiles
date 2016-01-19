@@ -1,0 +1,12 @@
+#
+# .zshrc is sourced in interactive shells.
+# It should contain commands to set up aliases,
+# functions, options, key bindings, etc.
+#
+
+# source profile like .bashrc (obsolete and slightly broken, was no-op anyway)
+#[ -r /etc/profile ] && source /etc/profile
+
+# my definitions
+[ -r ~/.zsh/adam ] && source ~/.zsh/adam
+

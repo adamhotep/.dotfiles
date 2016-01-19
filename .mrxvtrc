@@ -1,0 +1,112 @@
+Mrxvt*visualBell: 	true
+Mrxvt*termName: 	xterm
+Mrxvt*saveLines: 	10000
+Mrxvt*cursorBlink:      false
+Mrxvt*veryBoldFont:	false
+Mrxvt*boldColors:	true
+Mrxvt*meta8:		true
+! appIcon doesn't work :(
+Mrxvt*appIcon:		/usr/share/pixmaps/gnome-terminal.png;16x16
+Mrxvt*showMenu:		false
+
+! transparency stuff
+Mrxvt*opacity: 		8
+Mrxvt*transparent: 	true
+Mrxvt*transparentScrollbar: true
+Mrxvt*transparentMenubar: true
+Mrxvt*transparentTabbar: true
+Mrxvt*tintColor:	#000000
+Mrxvt*shading:		75
+
+! colors, non-transparency fallbacks
+Mrxvt*reverseVideo: 	true
+Mrxvt*background: 	white
+Mrxvt*foreground: 	black
+!Mrxvt*foreground: 	#3a3640
+! reverseVideo swaps fg and bg, not so for tabs
+Mrxvt*tabForeground: 	white
+Mrxvt*itabForeground: 	#999999
+!Mrxvt*tabBackground: 	#3a3640
+!Mrxvt*itabBackground: 	#3a3640
+Mrxvt*tabBackground: 	black
+Mrxvt*itabBackground: 	black
+Mrxvt*color4: 		RoyalBlue
+Mrxvt*color12: 		RoyalBlue
+Mrxvt*scrollColor:	#222222
+Mrxvt*troughColor:	#444444
+
+! non-xft fonts in case it's de-activated
+Mrxvt.font1: 		5x7
+Mrxvt.font2: 		6x10
+Mrxvt.font: 		6x13
+Mrxvt.font3: 		7x14
+Mrxvt.font4: 		9x15
+
+! xft just keeps incrementing font size since they are now scalable
+Mrxvt.xft:              true
+Mrxvt.xftFont:          DejaVu Sans Mono
+!Mrxvt.xftFont:          Bitstream Vera Sans Mono
+!Mrxvt.xftmFont:         Bitstream Vera Sans Mono
+Mrxvt.xftNomFont:	true
+Mrxvt.xftAntialias:     true
+Mrxvt.xftHinting:       true
+Mrxvt.xftAutoHint:      true
+Mrxvt.xftGlobalAdvance: true
+Mrxvt.xftWeight:        bold
+Mrxvt.xftSlant:         roman
+Mrxvt.xftWidth:         normal
+Mrxvt.xftRGBA:          rgb
+Mrxvt.xftSize:          17
+Mrxvt.xftmSize:		1
+Mrxvt.xftPFont:		Nimbus Sans
+Mrxvt.xftPSize:		6
+
+! Scroll bar
+Mrxvt*scrollbarStyle:		rxvt
+Mrxvt*scrollbarFloating:	true
+Mrxvt*scrollbarRight:		false
+Mrxvt*scrollTtyOutputInhibit:	true
+Mrxvt*scrollTtyKeypress:	true
+
+! we have tabs.  
+!Mrxvt*hideTabbar: 	true
+Mrxvt*hideButtons: 	true
+Mrxvt*tabForeground:	white
+Mrxvt*itabForeground:	slategray
+Mrxvt*syncTabTitle:	true
+Mrxvt*syncTabIcon:	true
+Mrxvt*bottomTabbar:	false
+
+! hotkeys
+!these are defaults, but I want them to work when i pass Mrxvt -ddh
+!Mrxvt*hotkey*NewTab:		Ctrl+Shift+t
+!Mrxvt*hotkey*HideScrollbar:	Ctrl+Shift+s
+!Mrxvt*hotkey*NextTab:		Ctrl+Page_Down
+!Mrxvt*hotkey*PrevTab:		Ctrl+Page_Up
+Mrxvt.macro.Ctrl+Shift+t:	NewTab
+Mrxvt.macro.Ctrl+Shift+s:	ToggleSubwin s
+Mrxvt.macro.Ctrl+Page_Down:	GotoTab +1
+Mrxvt.macro.Ctrl+Page_Up:	GotoTab -1
+
+! from LinuxJournal oct07 p18 "tech tips" - Colorize Man Pages
+Mrxvt*colorULMode: on
+Mrxvt*colorUL: yellow
+Mrxvt*underLine: off
+Mrxvt*colorBDMode: on
+Mrxvt*colorBD: red
+
+! disable some defaults - see manpage or /etc/mrxvt/mrxvtrc
+!Mrxvt.macro.Meta+1:		Dummy
+!Mrxvt.macro.Meta+2:		Dummy
+!Mrxvt.macro.Meta+3:		Dummy
+!Mrxvt.macro.Meta+4:		Dummy
+!Mrxvt.macro.Meta+5:		Dummy
+!Mrxvt.macro.Meta+6:		Dummy
+!Mrxvt.macro.Meta+7:		Dummy
+!Mrxvt.macro.Meta+8:		Dummy
+!Mrxvt.macro.Meta+9:		Dummy
+!Mrxvt.macro.Meta+0:		Dummy
+!Mrxvt.macro.Ctrl+Shift+m:	Dummy
+!Mrxvt.macro.Primary+Shift+Return:	Dummy
+! fix "Can not add actions to a Dummy macro" bug; see http://tinyurl.com/8b22jm
+Mrxvt.macro.Primary+Shift+Return:	Exec true

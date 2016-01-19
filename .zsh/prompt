@@ -1,0 +1,151 @@
+# SET PROMPTS							# vim:syn=zsh
+# Screenshot of this in action:  http://khopis.com/zsh.png
+
+where debugme >/dev/null 2>&1 || debugme() { true; }
+
+debugme setting system name/id/color prefs
+[ -r "${ZDOTDIR:=$HOME}/sysprefs" ] && source "$ZDOTDIR/sysprefs"
+PRIME_HOST=${PRIME_HOST:-sphinx}
+if [ -z "$PRIME_UID$SUDO_USER" ] \
+&& ! ps aux |grep -vw "^$LOGNAME" |grep -w "`tty |sed s:/dev/::`" >/dev/null
+  then PRIME_UID=`id -u`
+fi
+PRIME_COLOR=${PRIME_COLOR:-0;34}
+
+debugme setting prompt_subst
+setopt prompt_subst # allow variable substitution
+
+debugme aliasing prompt-fixers
+
+# allow escape from colors and titlebar
+alias fix_prompt='export PROMPT="[%n@%m %~]%# "; unset RPROMPT; precmd() {;}'
+
+debugme switch to determine support by reported terminal type
+case $TERM in
+rxvt* | vt100* | xterm* | linux | dtterm* )
+  debugme rxvt, vt100, xterm, xterm-color, Linux, or dtterm
+  # overall Prompt Color, $PC
+  if echo "$OS" |grep -qiE 'linux|bsd' >/dev/null 2>&1
+    then PC='0;32' # Linux or *BSD = green
+    else PC='0;31' # Something else = red
+  fi
+  if [ "$(uname -n|sed 's/\.*//')" = "$PRIME_HOST" ]
+    then PC="$PRIME_COLOR" # primary host = primary color
+  fi
+  if [ -z "$INSCREEN$SSH_TTY" ]
+    then PR='0;32' # green square brackets surrounding prompt
+    else PR='0;0' # white brackets for screen sessions and remote connections
+  fi
+
+  function PSC() { echo -n "%{\e[${*}m%}"; } # insert color specifying chars
+
+  # except on Linux console, title_say prints to titlebar
+  [ "$TERM" != "linux" ] && TSAY=okay
+
+  # Username with Color tags: checks below + username (%n) + revert color
+  # %(if uid=me, then '', else %(if priviledged, then white-on-red, else red))
+  #UCOLOR="%($PRIME_UID#,,%(!,`PSC '0;41'`,`PSC '0;31'`))%n$(PSC $PC)"
+  # %(if me, then name, else red %(if priviledged, stand-out name, else name))
+  UCOLOR="%($PRIME_UID#,`PSC $PC`%n,`PSC '0;31'`%(!,%S%n%s,%n))`PSC $PC`"
+
+  ERR="%(0?,`PSC '0;32'`,`PSC '1;31'`)" # if last cmd!=err, hash=green, else red
+  # if last cmd!=err, date, else err#
+  ERR2="%(0?,%w,`PSC '1;30'`[`PSC '1;31'`%?`PSC '1;30'`]`PSC '0;34'`)"
+
+  # Color STDERR red - Pretty cool, but too buggy for me
+  # taken from http://gentoo-wiki.com/TIP_Advanced_zsh_Completion
+  #exec 2>>(while read line; do
+  #  print '\e[91m'${(q)line}'\e[0m' > /dev/tty; done &)
+
+  ;;
+
+* )
+  debugme terminal type unknown, no colors, no title
+  function PSC() { true; } # no color support?  no problem!)
+  UCOLOR="%n"     # user name with (no) color tags
+  ;;
+esac
+
+debugme title_say will report text to the titlebar if that is safe to do
+# safely print to titlebar (and stdout unless -q is passed)
+title_say() {
+  [ "$1" != "-q" ] && echo "$*" || shift	# w/o -q, also print to stdout
+  if [ -n "$TSAY" ]; then	# when safe, print to titlebar
+    print -n "\e]0;"
+    #print -Rn "$*"		# don't interpret escapes from the command
+    # the buffer overflows at 247 chars and zeros, overflows later onto term
+    #print -Rn "$*" |perl -pne 's/\s+/ /g; s/^(.{246}).*/$1/'
+    print -Rn "${*:0:246}"
+    print -n "\a"
+  fi
+}
+
+# determine if a given argument is a function/exe/alias/thing we can run
+function we_have() {
+  command -v "$@" >/dev/null 2>&1
+}
+
+[ -z "$USER" ] && USER=`whoami || who ami || echo $LOGNAME` 2>/dev/null
+
+debugme set PWD-shortener
+#if ! we_have PSWD || [ "`PSWD /fbb/foo/baz`" != /fbb/foo/baz ]; then
+  #[ -n "$CYGWIN" ] && cygpwd='s:^/cygdrive/([a-z])(/|$):\1\:/:;' # for Windows
+  #we_have perl \
+  #  && function PSWD() { echo "$*" |perl -pne 's:^'"$HOME"':~:;'"$cygpwd"'s:^(.{10}).{4}.*(.{20})$:$1...$2:;'; } \
+  #  || alias PSWD=echo
+
+  # Shorten home dir, cygwin drives, paths that are too long (100% bourne sh!)
+  # As I posted to https://unix.stackexchange.com/a/178816/87770
+  function PSWD() {
+    local p="$*" parta partb
+    if [ "$p" = "${HOME:-empty}${p#$HOME}" ]
+      then p="~${p#$HOME}"
+    fi
+    if [ "$OS" != "${OS#*CYGWIN}" -a "${p#/cygdrive}" != "$p" ]; then
+      p="${p#/cygdrive/}"
+      parta="${p%%/*}"
+      if [ -z "$parta" ]
+        then p="$p:"
+        else p="$parta:${p#?}"
+      fi
+    fi
+    if [ "${#p}" -ge 34 ]; then 	# p is long enough to abridge
+      parta="${p#??????????}"		# p without the first 10 chars
+      parta="${p%$parta}"		# p with ONLY the first 10 chars
+      partb="${p%????????????????????}"	# p without the last 20 chars
+      partb="${p#$partb}"		# p with ONLY the last 20 chars
+      p="$parta...$partb"		# [first 10 chars]...[last 20 chars]
+    fi
+    echo "$p"
+  }
+
+# fi
+
+debugme extra commands to run before and after command line
+function preexec() { # before prompt is rendered
+  title_say -q "$1"
+}
+
+function precmd() { # after command is given, before it is interpreted
+  PTH="$(PSWD $(print -Pn %~))" 	# shortened path for display
+  if [ -n "$TSAY" ]; then		# when safe, print to titlebar
+    print -n "\e]0;"
+    print -PRn "%n@%m: %~"
+    print -n "\a"
+  fi
+  we_have __path_log && __path_log	# log last nine PWDs in $DIRHIST array
+}
+
+debugme set prompt and right-prompt # $PTH is escaped, so we check it each time
+PROMPT="$(PSC $PR)[$UCOLOR@%m$(PSC '0;33') \$PTH$(PSC $PR)]$ERR%#$(PSC '0;0') "
+RPROMPT="$(PSC '0;34')$ERR2 %*$(PSC '0;0')" # @right; ([err]|day DD) HH:MM:SS
+
+# these aren't needed anymore
+unset PR PC ERR UCOLOR PRIME_HOST PRIME_COLOR
+export PRIME_UID # this may still be needed in case we re-run this as a new user
+
+# Learn more at:
+# - `man zshmisc` (search for "prompt escapes")
+# - http://en.wikipedia.org/wiki/Zsh#External_links
+# - http://khopis.com/scripts  (that's me!)
+# - http://aperiodic.net/phil/prompt/

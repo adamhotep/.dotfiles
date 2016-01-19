@@ -1,0 +1,83 @@
+# vim:syn=zsh
+if [ "${ZSH_VERSION%%.*}" -gt 3 ]; then #{
+
+if [ -d ~/.zsh/completion.d ]; then
+  fpath=(~/.zsh/completion.d $fpath)
+fi
+
+# set ZSH_INSEC to "-u" in ~/.zsh/sysconf to ignore insecure completion files
+autoload -U compinit && compinit $ZSH_INSEC
+COMP='-' # prevent this from loading later in ~/.zsh/zshcmds
+
+# this somehow fixes apt-get's completion given apt-rpm
+we_have apt-get && ! we_have dpkg && alias dpkg=true
+
+# case insensitive completion
+zstyle ':completion:*' matcher-list '' 'm:{a-zA-Z}={A-Za-z}'
+setopt NO_CASE_GLOB
+setopt NUMERIC_GLOB_SORT
+
+if we_have dircolors
+  then eval `dircolors` && \
+    zstyle ':completion:*:default' list-colors ${(s.:.)LS_COLORS}
+  else zstyle ':completion:*' list-colors ''
+fi
+
+# from http://www.linux-mag.com/id/1106/
+zstyle ':completion:*' verbose yes
+zstyle ':completion:*:descriptions' format '%B%d%b'
+zstyle ':completion:*:messages' format '%d'
+zstyle ':completion:*:warnings' format 'No matches for: %d'
+zstyle ':completion:*' group-name ''
+
+# from https://stackoverflow.com/a/171564/519360
+zstyle ':completion:*' auto-description 'specify: %d'  # generate descs w/ magic
+# more errors allowed for large words and fewer for small words
+zstyle ':completion:*:approximate:*' max-errors \
+         'reply=(  $((  ($#PREFIX+$#SUFFIX)/3  ))  )'
+zstyle ':completion::*:(rm|vi):*' ignore-line true # ignr already-completed args
+zstyle ':completion:*' ignore-parents parent pwd   # don't complete $PWD
+
+# Don't complete the same twice for kill/diff.
+# from http://chneukirchen.org/dotfiles/.zshrc
+zstyle ':completion:*:(kill|diff):*'	ignore-line yes
+
+# ssh completion based on known_hosts ... search google for:  zstyle ssh
+# or see http://gentoo-wiki.com/Talk:TIP_Advanced_zsh_Completion
+# NOTE, you need to add "HashKnownHosts no" to your ~/.ssh/config
+function _get_hosts() {
+echo ${=${${(f)"$(cat ~/.ssh/known_hosts(|2)(N) /dev/null)"}%%[# ]*}//,/ }
+echo ${=${(f)"$(cat {~/.,/etc/}hosts(|)(N) <<(ypcat hosts 2>/dev/null))"}%%\#*}
+}
+function _get_ssh_hosts() {
+echo ${=${${(f)"$(egrep -i '\W*host\W' ~/.ssh/config 2>/dev/null)"}//* /}%%*\**}
+echo ${=${${(f)"$(cat ~/.ssh/known_hosts(|2)(N) /dev/null)"}%%[# ]*}//,/ }
+echo ${=${(f)"$(cat {~/.,/etc/}hosts(|)(N) <<(ypcat hosts 2>/dev/null))"}%%\#*}
+}
+#compdef _ssh smart-ssh
+compdef _hosts smart-ssh
+zstyle -e ':completion:*' hosts 'reply=( `_get_hosts` )'
+zstyle -e ':completion:*:(ssh|scp|sftp|smart-ssh):*' hosts 'reply=( `_get_ssh_hosts` )'
+
+# rdesktop completion based on hosts as above plus ssh-tunneled mstsc ports
+# requires my rdesktop tunnel-traversing wrapper script
+# a little help came from http://ibm-zsh-guide.notlong.com#N102B9
+function _get_rdesktops() {
+  reply=(`
+    rdesktop --list-maps 2>/dev/null |sed 's/^port.*maps //; s/:.*ough//'
+    _get_hosts
+  `)
+      #|sed -r 's/^port.*maps ([^:]+):.*ough/\1/'
+}
+#compctl -k "( `_get_rdesktops` `_get_hosts` )" rdesktop
+compctl -K _get_rdesktops rdesktop
+#compctl -K _get_ssh_hosts smart-ssh
+
+# Auto-escape URLs (including question mark and ampersand!)
+# from http://traviscj.com/tricks/?p=8
+autoload -U url-quote-magic
+zle -N self-insert url-quote-magic
+zstyle -e :urlglobber url-other-schema \
+  '[[ $words[1] == scp ]] && reply=("*") || reply=(http https ftp)'
+
+fi #}

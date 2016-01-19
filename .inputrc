@@ -1,0 +1,13 @@
+# ~/.inputrc is for bash
+
+# fix backspace
+"\e[3~": backward-delete-char
+
+# search based on matching what's already there
+#"\e[A":history-search-backward
+#"\e[B":history-search-forward
+
+# readline variables from man bash
+set completion-query-items 10000
+set completion-ignore-case on
+

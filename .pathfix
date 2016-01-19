@@ -1,0 +1,138 @@
+# ~/.pathfix, should be safe for zsh, bash, bsh, ksh, sh, ash       vim:syn=sh:
+# NOT the right format for csh or tcsh, NOT safe for Solaris sh (jsh).
+# YOU MUST SOURCE THIS AND NOT RUN IT:    $ source ~/.pathfix
+
+[ -n "$DEBUGME" ] && debugme() { /bin/date +"%M%S: $*"; } || debugme() { true; }
+
+type uname sed >/dev/null 2>&1 || PATH=/bin${PATH+:}$PATH
+
+debugme OS-specific
+# special cases by operating system
+[ -z "$OS" ] && OS=`uname -s |sed 's/IRIX64/IRIX/'`
+case $OS in
+  SunOS )
+    PATH="/usr/sfw/sbin:/usr/sfw/bin:/opt/adam/sbin:/opt/adam/bin:/sbin:/bin:/usr/sbin:/usr/bin:/usr/ccs/sbin:/usr/ccs/bin:/usr/ucb:/usr/X11/bin:/usr/openwin/bin:/usr/bin/X11:/usr/dt/bin:/usr/bin/X11/demos:/usr/games:/opt/sfw/bin:$PATH"
+    ;;
+
+  IRIX | IRIX64 )
+    PATH="/usr/freeware/bin:$PATH:/usr/bsd:/usr/bin/X11:/usr/X11/bin"
+    MANPATH="/usr/share/catman:/usr/share/man:/usr/catman:/usr/man:/usr/freeware/catman:/usr/freeware/man:$MANPATH"
+    XFILESEARCHPATH=/usr/lib/X11/%T/%N:/usr/freeware/lib/X11/%T/%N
+    export XFILESEARCHPATH
+    ;;
+
+  AIX )
+    PATH="/opt/freeware/sbin:/opt/freeware/bin:/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/bin:/usr/X11/bin:/usr/bin/X11:/usr/vac/bin:/usr/dt/bin:/usr/ccs/bin:$PATH"
+    # this next line is needed ASAP, as freeware/bin things need freeware/lib!
+    LIBPATH="/opt/freeware/lib:$LIBPATH"
+    export PATH LIBPATH
+    ;;
+
+  * )
+    PATH="/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin:/usr/local/sbin:/usr/bin:/usr/X11/bin:/usr/bin/X11:/usr/bin/X11/demos:$PATH"
+    ;;
+
+esac
+
+debugme default path additions
+
+debugme "PATH was '$PATH'"
+
+unset locals
+if [ "$PATH" = "${PATH#*:/usr/local/bin:}" ]
+  then locals="/usr/local/sbin:/usr/local/bin:"
+fi
+PATH="$HOME/$OS/sbin:$HOME/$OS/bin:$HOME/sbin:$HOME/bin:$locals$PATH:/usr/local/games:/usr/games:/arch/bin"
+
+debugme "PATH is now '$PATH'"
+debugme "Defining path trim function, cleaning up PATH"
+
+unfun() {
+  unalias "$@" 2>/dev/null
+  unfunction "$@" 2>/dev/null # for zsh
+  unset -f "$@" 2>/dev/null # for sh and bash
+  unset "$@" 2>/dev/null
+  true
+}
+unfun pathtok
+
+# clean up given path
+pathtok() {
+  local IFS=: p=: d o="${*:-$PATH}"
+  [ -n "$ZSH_VERSION" ] && type setopt >/dev/null 2>&1 && setopt SH_WORD_SPLIT
+  for d in $o; do
+    # if a dir,  is absolute,        isn't already in p   then append to p
+    [ -d "$d" -a "$d" != "${d#/}" -a "$p" = "${p#*:$d:}" ] && p="$p$d:"
+  done
+  IFS=' '
+  p=${p%%:}  # remove trailing colon (which would otherwise include .)
+  p=${p##:}  # remove leading colon (which would be insanely dangerous)
+  echo ${p:-$o}  # failover to original
+}
+
+PATH=`pathtok "$PATH"`
+debugme "PATH is now '$PATH'"
+
+debugme "Using cleaned PATH to seed other path variables"
+
+_gen_path() { echo $PATH: |sed "s|[^:]*[^n]:||g; s|/s*bin:|/$1:|g"; }
+
+debugme "LD was '$LD_LIBRARY_PATH'"
+LD="$(_gen_path lib):$LD_LIBRARY_PATH"
+# multilib; (mostly fedora/redhat derivates)
+if [ -d /usr/lib64 ] || uname -a |grep 64 >/dev/null; then
+  LD="$(echo $LD: |sed 's|/lib:|/lib64:|g; s|/lib/|/lib64/|g'):$LD"
+fi
+LD=`pathtok "$LD"`
+LD_LIBRARY_PATH="$LD"
+SHLIB_PATH="$LD"
+LIBPATH="$LD"
+debugme "LD is now '$LD_LIBRARY_PATH'"
+
+if type perl >/dev/null 2>&1; then
+  NEW_PERL5LIB=`perl -e '
+    @libs = split(":", $ENV{LD_LIBRARY_PATH});
+    $ver = $^V;
+    $ver =~ s/^v//;
+    for (@libs) {
+      for $a ("/site_perl","") {
+        for $b ("$_/perl5$a/$ver/mach","$_/perl5$a/$ver") {
+          push(@plib,$b) if -d $b;
+        }
+      }
+    }
+    print join(":",@plib)
+  '`
+  if [ -n "$PERL5LIB" ]; then
+    if [ -n "$NEW_PERL5LIB" ]; then
+      PERL5LIB="$PERL5LIB:$NEW_PERL5LIB"
+    fi
+  elif [ -n "$NEW_PERL5LIB" ]; then
+    PERL5LIB="$NEW_PERL5LIB"
+  fi
+fi
+
+PKG_CONFIG_PATH="$(echo $LD: |sed 's|lib[^/:]*|&/pkgconfig|g'):$PKG_CONFIG_PATH"
+PKG_CONFIG_PATH=`pathtok "$PKG_CONFIG_PATH"`
+
+debugme "MANPATH was '$MANPATH'"
+_gen_manpath() {
+  local MANPATH=''  # empty for just this function (this is why it's a function)
+  manpath 2>/dev/null |grep :/ || man --path 2>/dev/null |grep :/
+}
+MANPATH="$(_gen_path man):$MANPATH:$(_gen_manpath)"
+MANPATH=`echo :$MANPATH: |sed 's|:[^:]*/man:|&!&|g; s|/man:!:|/share/man:|g'`
+MANPATH=`pathtok $MANPATH`
+debugme "MANPATH is now '$MANPATH'"
+
+unset locals LD MANPATH2 NEW_PERL5LIB
+unfun _gen_path _gen_manpath
+
+export PATH LD_LIBRARY_PATH MANPATH PKG_CONFIG_PATH LIBPATH SHLIB_PATH PERL5LIB
+
+# asking for a particular value?  I can echo that.
+if [ -n "$1" ]; then
+  eval echo '$'"${1#$}"
+fi
+
+debugme PATHFIX DONE

@@ -1,0 +1,6 @@
+# ~/.zlogout
+
+[ "$TERM" = "linux" ] && clear  # only clear screen if not in X or remote
+
+# theoretically prevents running /etc/zlogout (which clears the terminal)
+exec true

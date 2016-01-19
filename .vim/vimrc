@@ -1,0 +1,276 @@
+" ~/.vimrc
+
+"""""""""""""""""""""""""""""""""""""""
+
+" vim 7.0+ features
+if version >= 700
+  " activate spellcheck, toggle with F6
+  setlocal spell spelllang=en_us " setting dictionary turns it on
+  set nospell		" start with it off
+  set spellcapcheck=	" disable assumption of desired capital after period
+  noremap <silent> <F6> :set spell!<CR>
+  inoremap <silent> <F6> <c-o>:set spell!<CR>
+endif
+
+" who needs .gvimrc?  (irc://irc.freenode.net#vim said this is limited)
+if has('gui_running')
+  "set guifont=-schumacher-clean-medium-r-normal-*-*-80-*-*-c-*-iso646.1991-irv
+  set guifont=Monospace\ 7.5 " this is not limited to integers
+  set encoding=utf-8
+  set guioptions-=T
+  " Using Lucius 8.1.4 with one tweak: line 385 Comment #808080 -> #9e9e9e
+  colorscheme lucius " neon torte murphy ... jammy desertEX
+
+  " paste from clipboard (requires X so the clipboard is accessible)
+  nmap <C-S-V> "+gP
+  "imap <C-S-V> <Esc>"+gPa	" disabled because it doesn't REQUIRE shift
+
+  " increase/decrease font size (assumes +float compilation, ~safe given gui)
+  function! ChangeFontSize(direction)
+    let fontFace = substitute(&guifont, "\\s\\+[0-9.]\\+$", "", "")
+    let fontSize = str2float( matchstr(&guifont, "\\s\\zs[0-9.]\\+$") )
+    if (fontSize == 0.0)   " vim interprets str2float(non-number) as zero
+      let fontSize = 8
+    endif
+    let modifier = 0.5
+    if (fontSize >= 16) 	" bigger steps proportional to current size
+      let modifier = round(fontSize / modifier * 0.125) * 0.5
+    elseif (fontSize >= 13)	" only slightly bigger steps here
+      let modifier = modifier * 2
+    endif
+    if (a:direction != "up")
+      let modifier = modifier * -1
+    elseif (fontSize > 256)  " max size (X11 struggles to fit oversized windows)
+      let modifier = 0
+    endif
+    if (fontSize + modifier <= modifier)
+      let fontSize = 0.5   " prevent rounding to zero (gvim interprets 0 as 10)
+    else
+      let fontSize += modifier
+    endif
+    let fontSizeStr = substitute( printf("%f", fontSize), '\.\?0*$', '', '' )
+    let &guifont = fontFace . ' ' . fontSizeStr
+  endfunction
+
+  " ctrl+wheel or shift+keypad+/- = change font size (def action was PgUp/PgDn)
+  " ... vim maps these backwards?!  TODO: rework vmap to preserve highlighting
+  nmap <silent> <C-MouseDown> :call ChangeFontSize("up")<CR>
+  nmap <silent> <S-kPlus> :call ChangeFontSize("up")<CR>
+  vmap <silent> <C-MouseDown> :call ChangeFontSize("up")<CR>
+  vmap <silent> <S-kPlus> :call ChangeFontSize("up")<CR>
+  imap <silent> <C-MouseDown> <Esc>:call ChangeFontSize("up")<CR><Insert>
+  imap <silent> <S-kPlus> <Esc>:call ChangeFontSize("up")<CR><Insert>
+
+  nmap <silent> <C-MouseUp>   :call ChangeFontSize("down")<CR>
+  nmap <silent> <S-kMinus>   :call ChangeFontSize("down")<CR>
+  vmap <silent> <C-MouseUp>   :call ChangeFontSize("down")<CR>
+  vmap <silent> <S-kMinus>   :call ChangeFontSize("down")<CR>
+  imap <silent> <C-MouseUp>   <Esc>:call ChangeFontSize("down")<CR><Insert>
+  imap <silent> <S-kMinus>   <Esc>:call ChangeFontSize("down")<CR><Insert>
+
+  " scroll sideways when shift is held
+  nmap <S-MouseDown> 3zh
+  nmap <S-Mouseup>   3zl
+  "vmap <S-MouseDown> 3zh
+  "vmap <S-Mouseup>   3zl
+  imap <S-MouseDown> <Esc>3zh<Insert>
+  imap <S-Mouseup>   <Esc>3zl<Insert>
+
+  " stop cursor blink (to save battery power)
+  " http://www.lesswatts.org/projects/powertop/known.php#gvim
+  let &guicursor = &guicursor . ",a:blinkon0"
+
+  if &diff
+    autocmd GuiEnter * set columns=165 lines=45
+  else
+    autocmd GuiEnter * set columns=80 lines=40
+  end
+
+  " gvim lacks my extra path elements when launched from X.
+  " ~/.pathfix assembles proper paths and then runs:   eval echo "\$$1"
+  if filereadable(expand("$HOME/.pathfix")) && $PATH !~ expand("$HOME/bin")
+    let $PATH = system("sh .pathfix PATH")
+    let $LD_LIBRARY_PATH = system("sh .pathfix LD_LIBRARY_PATH")
+  end
+
+end
+
+
+"""""""""""""""""""""""""""""""""""""""
+" MAPPINGS
+
+" map typos
+"nmap :W 	:w
+"nmap :Q 	:q
+command! W	w
+command! Q	q
+nmap :qw	:w
+nmap :qa1	:qa!
+nmap :q1	:q!
+cmap w!!	w !sudo tee % > /dev/null
+imap <F1>	<Esc>
+nmap <F1>	<Esc>
+vmap <F1>	<Esc>
+nmap ;  	:
+map  Q		<silent>
+map  q: 	<silent>
+map  K		<silent>
+
+" select all with ALT+a (<A-a> only works in gvim, see :help map-alt-keys)
+" FIX for rxvt/aterm/mrxvt:  use --meta8 or set xresource rxvt*meta8 true
+nmap <A-a>	ggVG
+imap <A-a>	<Esc>ggVG
+vmap <A-a>	<Esc>ggVG
+
+" paste toggle with F4
+nnoremap \tp :set invpaste paste?<CR>
+nmap <F4> \tp
+imap <F4> <C-O>\tp
+set pastetoggle=<xF4>
+"map <f4>  :set paste!<cr>:set paste?<cr> " toggle paste (old way)
+
+" turn on omni-completion when available 
+" (from http://pierreantoine.lacaze.free.fr/linux/config/files/vimrc.html )
+au Filetype * if exists('&omnifunc') && &omnifunc == "" | set ofu=syntaxcomplete#Complete | endif 
+
+" tab comp @ http://pierreantoine.lacaze.free.fr/linux/config/files/vimrc.html
+"function InsertTabWrapper()
+"  let col = col('.') - 1
+"  if !col || getline('.')[col - 1] !~ '\k'
+"    return "\<tab>"
+"  elseif exists ('&omnifunc') && &omnifunc != ""
+"    return "\<C-x>\<C-o>"	" omni-completion (vim7-only)
+"  else
+"    return "\<C-p>"		" completion within the file
+"  endif
+"endfunction
+"inoremap <tab> <c-r>=InsertTabWrapper()<cr>
+
+" pretend we're emacs for bash-isms:
+nmap <C-e>       <End>
+imap <C-e>       <End>
+vmap <C-e>       <End>
+"nmap <C-a>       <Home>  " I started to like ^A and ^X for increment/decrement
+imap <C-a>       <Home>
+vmap <C-a>       <Home>
+" I stopped using this ages ago ... digraphs are more interesting now
+"nmap <C-k>       D
+"imap <C-k>       <Esc>D<Insert>
+
+" shift-tab should insert normal tab (i set tab-completion on vim7)
+inoremap <S-Tab> <Tab>
+
+" since modern distros disable modelines for security, toggle and reload w/ F5
+nmap <F5>	:set modeline<cr>:e<cr>
+"ia '#!/bin/sh'<cr>	:set syn=sh<cr>i#!/bin/sh<cr>	" why doesn't this work?
+
+"""""""""""""""""""""""""""""""""""""""
+" CONFIGURATION stuff
+
+syntax on
+set fileformat=unix
+set background=dark
+
+function! HTMLize(...)
+  let scheme = "default"
+  if (a:0 > 0)
+    let scheme = a:1
+  endif
+  let g:html_use_css = 0
+  let oldcolorscheme = g:colors_name
+  let oldbg = &background
+  execute "colorscheme " . scheme
+  set background=light
+  TOhtml
+  %s/[\r\n]\+//g
+  %s/\(color="\|text="\|style="background-color: \)#af0000/\1#b00/ige
+  %s/\(color="\|text="\|style="background-color: \)#a52a2a/\1#a22/ige
+  %s/\(color="\|text="\|style="background-color: \)#af5f00/\1#a60/ige
+  %s/\(color="\|text="\|style="background-color: \)#d7afaf/\1#daa/ige
+  %s/\(color="\|text="\|style="background-color: \)#870087/\1#808/ige
+  %s/\(color="\|text="\|style="background-color: \)#005faf/\1#05b/ige
+  %s/\(color="\|text="\|style="background-color: \)#005f87/\1#068/ige
+  %s/\(color="\|text="\|style="background-color: \)#\([0-9a-f]\)\2\([0-9a-f]\)\3\([0-9a-f]\)\4/\1#\2\3\4/ige
+  %s/\(color="\|text="\|style="background-color: \)#\([0-9a-f]\)\([0-9a-f]\)\([0-9a-f]\)\3\([0-9a-f]\)\3/\1#\2\4\5/ige
+  %s/\(<body \)bgcolor="\([^"]*\)" text="\([^"]*\)">[\r\n]*<font face="monospace">/\1\r\r\r\r<pre style="color:\3;background:\2;width:-moz-fit-content;width:fit-content;border:#dde dashed 1px;padding:.25em">/
+  %s/<\/font>\([\r\n]*<.body>\)/<\/pre>\r\r\r\r\1/
+  %s/<font color="/<span style="color:/g
+  %s/<\/font/<\/span/g
+  " %s/<br>$//
+  execute "colorscheme " . oldcolorscheme
+  execute 'set background = "' . oldbg . '"'
+endfunction
+noremap <silent> <F7> :call HTMLize("lucius")<CR>
+inoremap <silent> <F7> :call HTMLize("lucius")<CR>
+
+set ruler
+set laststatus=2		" always show status line
+set title
+set wildmenu			" show tabbing collisions (like in bash)
+set wildmode=list:longest,full
+set showmatch
+set visualbell
+set mousefocus
+set nomousehide   " https://bugs.launchpad.net/ubuntu/+source/vim/+bug/616858
+set hlsearch			" highlight all hits on current search
+set ignorecase			" ignore caSe in searches
+set smartcase			" search cAse-sensitive iff caps are in search
+set incsearch			" search as you type the query (wee!)
+
+set autoindent			" carry over indentation from previous line
+" this may help: http://stackoverflow.com/questions/7329754/selectively-disabling-filetype-plugin-indent-for-particular-filetypes-in-vim-7
+if has ("autocmd")
+  filetype plugin indent on
+else
+  autocmd FileType c,cpp,slang set cindent " C-style indents for C-style files
+endif
+"set expandtab
+set smarttab
+set shiftwidth=2
+"set softtabstop=2
+set cinkeys-=0#			" C comments don't fiddle with indenting
+"autocmd FileType perl,css set smartindent " auto-continue comments, etc
+if exists('&copyindent')	" copyindent was introduced in 6.2
+  set copyindent
+endif
+if exists('&preserveindent')
+  set preserveindent
+endif
+set foldmethod=marker		" markers are used to specify folds
+
+"set linebreak			" wrapping words
+
+if exists('&diffopt')		" introduced after 5.8.8
+  set diffopt+=iwhite		" ignore whitespace in diff mode
+  set diffexpr=DiffW()
+  function DiffW()
+    let opt = ""
+     if &diffopt =~ "icase"
+       let opt = opt . "-i "
+     endif
+     if &diffopt =~ "iwhite"
+       let opt = opt . "-w "	" vim uses -b by default
+     endif
+     silent execute "!diff -a --binary " . opt .
+       \ v:fname_in . " " . v:fname_new .  " > " . v:fname_out
+  endfunction
+endif
+
+" override syntax for poorly named php files
+"if &syntax =~ "html" || &syntax == ""
+"  for line in [1,2,3,4,5]
+"    if getline(line) =~? '<?php[0-9]\?\>' | setfiletype php | break | endif
+"  endfor
+"endif
+
+"set syn=apache
+"if &syntax =~ "html" || &syntax == "" | for line in [1,2,3,4,5] | if getline(line) =~? '<?php[0-9]\?\>' | setfiletype php | break | endif | endfor | endif
+
+" from sbach, http://items.sjbach.com/319/configuring-vim-right
+" and http://www.vim.org/scripts/script.php?script_id=39
+if version >= 600 && filereadable("~/.vim/plugin/matchit.vim")
+  "runtime macros/matchit.vim
+  filetype plugin on
+  source ~/.vim/plugin/matchit.vim
+endif
+set scrolloff=3

@@ -1,0 +1,106 @@
+#!/bin/sh
+##########################
+## Resume/create screen sessions intelligently.  Never creates a second session.
+## Usage: resume-screen [OPTIONS] [HOST...]
+##  -h      This help information
+##  -i      Installation help
+##  --debug Debug this script
+##  HOST    A host to ALWAYS use screen for, including from multiple sources.
+##          HOST arguments are regular expressions.  You can also space-delimit.
+##          The $screen_host variable can be used in addition to HOST arguments.
+## $RESUME_HOSTS  acts just like HOST but hides the list from process lists (ps)
+## resume-screen v0.6 Copyright 2008+ by Adam Katz <scriptsATkhopiscom>, GPL 2+
+##########################
+### INSTALLATION HELP:
+###   Add this to your ~/.screenrc file:
+###     setenv inscreen 0
+###   Call this from the very top of your rc file (~/.bashrc, etc).
+###   The rest of this is only needed if you have multiple "screen" binaries.
+### 
+###   Add this to the very bottom of your rc file (after the $PATH is resolved):
+###     which -a screen |grep ^/ |head -n1 >~/.screen.`uname -n`
+###   (Note that this might fail if the binary needs a different library path)
+###   If you don't have GNU or Debian which, you'll need these lines instead:
+###     OLDIFS="$IFS"  IFS=":"
+###     for dir in $PATH; do
+###       if [ -f "$dir/screen" ] && [ -x "$dir/screen" ]; then
+###         echo "$dir/screen" > ~/.screen.`uname -n`
+###         break
+###       fi
+###     done
+###     IFS="$OLDIFS"
+### 
+### For general help, try 'resume-screen -h'
+##########################
+# Half of this code is for debug, but it remains because I suspect it would be
+# useful, e.g. the next time 'who' changes, etc.  Another note on this script:
+# Solaris uses jsh which cannot handle ${foo#bar} style substitution.
+##########################
+
+gethelp() { sed -e "/$1/!d" -e s/// `which $0 2>/dev/null || echo $0`; exit $2;}
+
+while [ -n "$1" ]; do
+  case $1 in
+    --debug  ) DEBUGME=true; shift ;;
+    -i*|--i* ) gethelp '^### ' ;;
+    -h|--he* ) gethelp '^## ' ;;
+    -* ) echo "`basename $0`: invalid argument \`$1'" >&2; gethelp '^## ' 1 ;;
+    *  ) break ;;
+  esac
+done
+
+if [ -z "$DEBUGME" ]
+  then debug() { true; }
+  else debug() { echo "`date +%M%S`: $*"; }
+       debug "  Debug enabled for `basename $0`."
+fi
+
+# Saved location lets this run before $PATH is set. See INSTALLATION HELP above.
+HOST="`uname -n`"
+myscreen="`cat ~/.screen.$HOST 2>/dev/null || which screen 2>&1 |grep /screen$`"
+debug "  screen='$myscreen'"
+
+# NOTE: 'inscreen' is a custom variable.  See INSTALLATION HELP above.
+if [ ! -x "$myscreen" ] || [ -z "$SSH_TTY" ] || [ -n "$inscreen" ]; then
+  debug "'$myscreen' isn't executable, not an SSH TTY, or already in screen"
+  exit 1
+fi
+
+debug "STEP ONE:  try to re-attach a detached screen session"
+$myscreen -r >/dev/null 2>&1 && exit 0
+# EXIT after we successfully re-attached to a screen session
+
+
+debug "  No un-attached screen found."
+
+# smoosh all hosts into one regular expression
+for arg in $RESUME_HOSTS "$@"
+  do screen_host="$screen_host${screen_host:+|}$arg"
+done
+debug "  HOST regexp='$screen_host'"
+
+if [ -n "$RESUME_HOSTS$1" ] && echo "$HOST" |egrep "$screen_host" >/dev/null
+then # if host{
+  debug "STEP TWO:  Attach to an in-use screen or create new one"
+  if $myscreen -ls 2>/dev/null |grep '(Attached)' >/dev/null # if attached {
+
+    then
+      debug "Attached screen found.  Trying to attach..."
+      mytty=`echo $SSH_TTY |sed -e 's:^/dev/::' -e 's:/:.:g'`
+      me=`id -un`
+      screen_client=`who |sed -e "/^$me.*$mytty[^0-9]/!d" -e 's/.*(//'`
+      debug "  tty='$mytty' client='$screen_client' user='$me'"
+      if [ `who |grep -c "$me.*$screen_client"` = 1 ]; then
+        debug "Success, you are not logged on from this SSH client IP."
+        echo "Connecting to already-attached session, press CTRL+C to cancel..."
+        sleep 3 && $myscreen -x
+      else
+        debug "Found more than one SSH connection from your IP.  No action."
+      fi
+
+    else
+      debug "No screens (attached or not) found.  Creating new session..."
+      $myscreen
+
+  fi # } end if attached
+fi # } end if host
